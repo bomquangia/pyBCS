@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="bcs-bioturing",
-    version="0.0.3",
+    version="0.0.4",
     author="BioTuring",
     author_email="support@bioturing.com",
     description="Create BioTuring Compressed Study (bcs) file",

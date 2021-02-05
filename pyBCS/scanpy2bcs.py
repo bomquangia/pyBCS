@@ -8,6 +8,7 @@ import pandas as pd
 import uuid
 import time
 import shutil
+import zipfile
 
 def copy_dataset(source, dest, name, chunk_size=16*1024):
     dataset = dest.create_dataset(name, shape=source[name].shape, dtype=source[name].dtype)
@@ -89,7 +90,7 @@ def convert_to_float(a):
     except:
         return None
 
-def write_metadata(source_hdf5, dest):
+def write_metadata(source_hdf5, dest, zobj):
     print("Writing main/metadata/metalist.json")
     content = {}
     categories = source_hdf5["obs"]["__categories"]
@@ -146,8 +147,8 @@ def write_metadata(source_hdf5, dest):
         "type":"category",
         "history":[graph_based_history]
     }
-    with open(dest + "/main/metadata/metalist.json", "w") as f:
-        json.dump({"content":content, "version":1}, f)
+    with zobj.open(dest + "/main/metadata/metalist.json", "w") as z:
+        z.write(json.dumps({"content":content, "version":1}).encode("utf8"))
 
 
     for uid in content:
@@ -165,30 +166,33 @@ def write_metadata(source_hdf5, dest):
             "history":content[uid]["history"],
             "type":[content[uid]["type"]]
         }
-        with open(dest + ("/main/metadata/%s.json" % uid), "w") as f:
-            json.dump(obj, f)
+        with zobj.open(dest + ("/main/metadata/%s.json" % uid), "w") as z:
+            z.write(json.dumps(obj).encode("utf8"))
 
-def write_main_folder(source_hdf5, dest):
+def write_main_folder(source_hdf5, dest, zobj):
     print("Writing main/matrix.hdf5", flush=True)
-    with h5py.File(dest + "/main/matrix.hdf5", "w") as dest_hdf5:
+    tmp_matrix = "." + str(uuid.uuid4())
+    with h5py.File(tmp_matrix, "w") as dest_hdf5:
         write_matrix(source_hdf5, dest_hdf5)
+    zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
+    os.remove(tmp_matrix)
 
     print("Writing main/barcodes.tsv", flush=True)
-    barcodes = [x.encode("utf8") for x in source_hdf5["obs"]["index"][:]]
-    with open(dest + "/main/barcodes.tsv", "w") as f:
-        f.writelines([x.decode("utf8") + "\n" for x in barcodes])
+    barcodes = "\n".join(source_hdf5["obs"]["index"][:]).encode("utf8")
+    with zobj.open(dest + "/main/barcodes.tsv", "w") as z:
+        z.write(barcodes)
 
     print("Writing main/genes.tsv", flush=True)
-    features = [x.encode("utf8") for x in source_hdf5["var"]["index"][:]]
-    with open(dest + "/main/genes.tsv", "w") as f:
-        f.writelines([x.decode("utf8") + "\n" for x in features])
+    features = "\n".join(source_hdf5["var"]["index"][:]).encode("utf8")
+    with zobj.open(dest + "/main/genes.tsv", "w") as z:
+        z.write(features)
 
     print("Writing main/gene_gallery.json", flush=True)
     obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
-    with open(dest + "/main/gene_gallery.json", "w") as f:
-        json.dump(obj, f)
+    with zobj.open(dest + "/main/gene_gallery.json", "w") as z:
+        z.write(json.dumps(obj).encode("utf8"))
 
-def write_dimred(source_hdf5, dest):
+def write_dimred(source_hdf5, dest, zobj):
     print("Writing dimred")
     data = {}
     default_dimred = None
@@ -201,7 +205,7 @@ def write_dimred(source_hdf5, dest):
         print("--->Writing %s" % dimred)
         matrix = source_hdf5["obsm"][dimred][:][:]
         if matrix.shape[1] > 3:
-            print("--->%s has more than 3 dimensions, using only the default_dimred 3 of them" % dimred)
+            print("--->%s has more than 3 dimensions, using only the first 3 of them" % dimred)
             matrix = matrix[:, 0:3]
         n_shapes = matrix.shape
 
@@ -224,8 +228,8 @@ def write_dimred(source_hdf5, dest):
             "param":coords["param"],
             "history":coords["history"]
         }
-        with open(dest + "/main/dimred/" + coords["id"], "w") as f:
-            json.dump(coords, f)
+        with zobj.open(dest + "/main/dimred/" + coords["id"], "w") as z:
+            z.write(json.dumps(coords).encode("utf8"))
     meta = {
         "data":data,
         "version":1,
@@ -234,11 +238,11 @@ def write_dimred(source_hdf5, dest):
         "description":"Created by converting scanpy to bbrowser format"
     }
     print("Writing main/dimred/meta", flush=True)
-    with open(dest + "/main/dimred/meta", "w") as f:
-        json.dump(meta, f)
+    with zobj.open(dest + "/main/dimred/meta", "w") as z:
+        z.write(json.dumps(meta).encode("utf8"))
 
 
-def write_runinfo(source_hdf5, dest, study_id):
+def write_runinfo(source_hdf5, dest, study_id, zobj):
     print("Writing run_info.json", flush=True)
     runinfo_history = generate_history_object()
     runinfo_history["hash_id"] = study_id
@@ -258,27 +262,38 @@ def write_runinfo(source_hdf5, dest, study_id):
         "title":["Created by bbrowser converter"],
         "history":[runinfo_history]
     }
-    with open(dest + "/run_info.json", "w") as f:
-        json.dump(run_info, f)
+    with zobj.open(dest + "/run_info.json", "w") as z:
+        z.write(json.dumps(run_info).encode("utf8"))
 
-def format_data(source, output_name, zip_format="zip"):
+def check_format(source):
+    dataset_paths = ["layers/counts/indptr",
+                    "layers/counts/indices",
+                    "layers/counts/data",
+                    "X/indptr",
+                    "X/indices",
+                    "X/data",
+                    "obs/index",
+                    "var/index",
+                    "obs/__categories",
+                    "obsm"]
+    with h5py.File(source, "r") as f:
+        for p in dataset_paths:
+            try:
+                x = f[p]
+            except Exception as e:
+                raise type(e)("Error when checking %s: %s" % (p, str(e)))
+
+def format_data(source, output_name, overwrite=False):
+    check_format(source)
+
+    zobj = zipfile.ZipFile(output_name, "w")
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
-    os.mkdir(dest)
-    dirs = ["/main", "/main/metadata", "/main/dimred", "/sub", "/res", "/log"]
-    for d in dirs:
-        print("Creating directory %s" % (dest + d), flush=True)
-        os.mkdir(dest + d)
     with h5py.File(source, "r") as s:
-        write_main_folder(s, dest)
-        write_metadata(s, dest)
-        write_dimred(s, dest)
-        write_runinfo(s, dest, study_id)
+        write_main_folder(s, dest, zobj)
+        write_metadata(s, dest, zobj)
+        write_dimred(s, dest, zobj)
+        write_runinfo(s, dest, study_id, zobj)
 
-    print("Zipping", flush=True)
-    name = shutil.make_archive(output_name, zip_format, root_dir=".", base_dir=study_id)
-    new_name = name[0:name.rfind("." + zip_format)]
-    os.rename(name, new_name)
-    shutil.rmtree(study_id)
-    return new_name
+    return output_name
 
