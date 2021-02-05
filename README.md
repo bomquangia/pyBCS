@@ -4,6 +4,8 @@ This is a python library to create a BioTuring Compressed Study (`bcs`) file fro
 
 `bcs` files can be imported directly into [BBrowser](https://bioturing.com/bbrowser), a software for single-cell data.
 
+Visit our [github](https://github.com/bioturing/pyBCS) for more detail.
+
 ## Example
 
 ```python
