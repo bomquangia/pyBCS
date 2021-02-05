@@ -1,4 +1,4 @@
-# bcs
+# pyBCS
 
 This is a python library to create a BioTuring Compressed Study (`bcs`) file from an AnnData (scanpy) object.
 
