@@ -162,7 +162,7 @@ def write_metadata(scanpy_obj, dest, zobj):
             lengths[index] = counts
             lengths = [x.item() for x in lengths]
             _type = "category"
-            names = ["Unassigned"] + list(enumerate(metadata[metaname].cat.categories))
+            names = ["Unassigned"] + list(metadata[metaname].cat.categories)
         else:
             print("--->\"%s\" is not numeric or categorical, ignoring" % metaname)
             continue
