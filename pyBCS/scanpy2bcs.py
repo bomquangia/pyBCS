@@ -309,27 +309,7 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj):
     with zobj.open(dest + "/run_info.json", "w") as z:
         z.write(json.dumps(run_info).encode("utf8"))
 
-def check_format(source):
-    dataset_paths = ["layers/counts/indptr",
-                    "layers/counts/indices",
-                    "layers/counts/data",
-                    "X/indptr",
-                    "X/indices",
-                    "X/data",
-                    "obs/index",
-                    "var/index",
-                    "obs/__categories",
-                    "obsm"]
-    with h5py.File(source, "r") as f:
-        for p in dataset_paths:
-            try:
-                x = f[p]
-            except Exception as e:
-                raise type(e)("Error when checking %s: %s" % (p, str(e)))
-
 def format_data(source, output_name, raw_data="auto"):
-    #check_format(source)
-
     scanpy_obj = scanpy.read_h5ad(source, "r")
     zobj = zipfile.ZipFile(output_name, "w")
     study_id = generate_uuid(remove_hyphen=False)
