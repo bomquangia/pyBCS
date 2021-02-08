@@ -37,22 +37,29 @@ def get_features(scanpy_obj):
 def get_raw_features(scanpy_obj):
     return scanpy_obj.raw.var.index
 
-def get_raw_data(scanpy_obj):
-    try:
-        M = scanpy_obj.raw.X[:][:].tocsr()
-        barcodes = get_barcodes(scanpy_obj)
-        features = get_raw_features(scanpy_obj)
-    except:
-        if "counts" in scanpy_obj.layers:
-            raw_key = "counts"
-        elif "raw" in scanpy_obj.layers:
-            raw_key = "raw"
-        else:
-            raise Exception("Cannot find raw data")
-        M = scanpy_obj.layers[raw_key].tocsr()
-        barcodes = get_barcodes(scanpy_obj)
-        features = get_features(scanpy_obj)
+def get_raw_from_rawX(scanpy_obj):
+    M = scanpy_obj.raw.X[:][:].tocsr()
+    barcodes = get_barcodes(scanpy_obj)
+    features = get_raw_features(scanpy_obj)
     return M, barcodes, features
+
+def get_raw_from_layers(scanpy_obj, raw_key):
+    M = scanpy_obj.layers[raw_key].tocsr()
+    barcodes = get_barcodes(scanpy_obj)
+    features = get_features(scanpy_obj)
+    return M, barcodes, features
+
+def get_raw_data(scanpy_obj, raw_key):
+    if raw_key == "auto":
+        try:
+            res = get_raw_from_rawX(scanpy_obj)
+        except:
+            res = get_raw_from_layers(scanpy_obj, raw_key)
+    elif raw_key == "raw.X":
+        res = get_raw_from_rawX(scanpy_obj)
+    else:
+        res = get_raw_from_layers(scanpy_obj, raw_key)
+    return res
 
 def get_normalized_data(scanpy_obj, raw_data):
     M = scanpy_obj.X[:][:].tocsc()
@@ -64,8 +71,8 @@ def get_normalized_data(scanpy_obj, raw_data):
 def encode_strings(strings, encode_format="utf8"):
     return [x.encode(encode_format) for x in strings]
 
-def write_matrix(scanpy_obj, dest_hdf5):
-    raw_M, barcodes, features = get_raw_data(scanpy_obj)
+def write_matrix(scanpy_obj, dest_hdf5, raw_key):
+    raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
     print("--->Writing group \"bioturing\"")
     bioturing_group = dest_hdf5.create_group("bioturing")
     bioturing_group.create_dataset("barcodes",
@@ -209,11 +216,11 @@ def write_metadata(scanpy_obj, dest, zobj):
         with zobj.open(dest + ("/main/metadata/%s.json" % uid), "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
 
-def write_main_folder(scanpy_obj, dest, zobj):
+def write_main_folder(scanpy_obj, dest, zobj, raw_data):
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
-        barcodes, features = write_matrix(scanpy_obj, dest_hdf5)
+        barcodes, features = write_matrix(scanpy_obj, dest_hdf5, raw_data)
     print("--->Writing to zip", flush=True)
     zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
     os.remove(tmp_matrix)
@@ -320,7 +327,7 @@ def check_format(source):
             except Exception as e:
                 raise type(e)("Error when checking %s: %s" % (p, str(e)))
 
-def format_data(source, output_name, overwrite=False):
+def format_data(source, output_name, raw_data="auto"):
     #check_format(source)
 
     scanpy_obj = scanpy.read_h5ad(source, "r")
@@ -328,7 +335,7 @@ def format_data(source, output_name, overwrite=False):
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
     with h5py.File(source, "r") as s:
-        write_main_folder(scanpy_obj, dest, zobj)
+        write_main_folder(scanpy_obj, dest, zobj, raw_data)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
         write_runinfo(scanpy_obj, dest, study_id, zobj)
