@@ -153,7 +153,6 @@ def write_metadata(scanpy_obj, dest, zobj):
             _type = "numeric"
         elif metaname in category_meta:
             value_to_index = {}
-            print(metaname)
             for x, y in enumerate(metadata[metaname].cat.categories):
                 value_to_index[y] = x
             all_clusters[uid] = [value_to_index[x] + 1 for x in metadata[metaname]]
