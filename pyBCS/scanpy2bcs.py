@@ -54,7 +54,14 @@ def get_raw_data(scanpy_obj, raw_key):
         try:
             res = get_raw_from_rawX(scanpy_obj)
         except:
-            res = get_raw_from_layers(scanpy_obj, raw_key)
+            candidate_keys = ["counts", "raw"]
+            for key in candidate_keys:
+                try:
+                    res = get_raw_from_layers(scanpy_obj, key)
+                except:
+                    continue
+                print("--->Found raw data in /layers/%s" % key)
+                break
     elif raw_key == "raw.X":
         res = get_raw_from_rawX(scanpy_obj)
     else:
