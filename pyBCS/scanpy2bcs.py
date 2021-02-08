@@ -53,7 +53,9 @@ def get_raw_data(scanpy_obj, raw_key):
     if raw_key == "auto":
         try:
             res = get_raw_from_rawX(scanpy_obj)
-        except:
+        except Exception as e:
+            print("--->Error when reading \"raw.X\": ", e)
+            print("--->Trying possible keys")
             candidate_keys = ["counts", "raw"]
             for key in candidate_keys:
                 try:
@@ -61,7 +63,8 @@ def get_raw_data(scanpy_obj, raw_key):
                 except:
                     continue
                 print("--->Found raw data in /layers/%s" % key)
-                break
+                return res
+            raise Exception("Raw data not found")
     elif raw_key == "raw.X":
         res = get_raw_from_rawX(scanpy_obj)
     else:
