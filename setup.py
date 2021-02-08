@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyBCS-bioturing",
-    version="0.0.4",
+    version="0.0.5",
     author="BioTuring",
     author_email="support@bioturing.com",
     description="Create BioTuring Compressed Study (bcs) file",
@@ -15,7 +15,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
