@@ -76,7 +76,7 @@ def get_normalized_data(scanpy_obj, raw_data):
     if M.shape == raw_data.shape:
         return M
     else:
-        return raw_data
+        return raw_data.tocsc()
 
 def encode_strings(strings, encode_format="utf8"):
     return [x.encode(encode_format) for x in strings]
@@ -108,7 +108,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 
     print("--->Writing group \"normalizedT\"")
-    norm_M = get_normalized_data(scanpy_obj, raw_M)
+    norm_M = get_normalized_data(scanpy_obj, raw_M_T)
     normalizedT_group = dest_hdf5.create_group("normalizedT")
     normalizedT_group.create_dataset("barcodes",
                                     data=encode_strings(features))
