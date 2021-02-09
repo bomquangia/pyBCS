@@ -60,28 +60,42 @@ def get_raw_data(scanpy_obj, raw_key):
         res = get_raw_from_layers(scanpy_obj, raw_key)
     return res
 
-def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features):
+def normalize_data(M):
+    M = M.tocsr()
+    for i in range(M.shape[0]):
+        l, r = M.indptr[i:i+2]
+        M.data[l:r] = np.log(M.data[l:r] / np.sum(M.data[l:r]) * 10000 + 1)
+    return M.tocsc()
+
+def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features, normalize_raw=True):
     M = scanpy_obj.X[:][:].tocsc()
     norm_barcodes = scanpy_obj.obs.index
     norm_features = scanpy_obj.var.index
     if (raw_data is None) or (M.shape == raw_data.shape):
         return M, norm_barcodes, norm_features
     else:
-        return raw_data.tocsc(), raw_barcodes, raw_features
+        print("--->Shape of \"X\" (%d, %d) does not equal shape of raw data (%d, %d), using raw data as normalized data"
+                % (M.shape + raw_data.shape))
+        if normalize_raw:
+            print("--->--->Normalizing raw data to obtain log-normalized data")
+            return normalize_data(raw_data), raw_barcodes, raw_features
+        else:
+            return raw_data.tocsc(), raw_barcodes, raw_features
 
 def encode_strings(strings, encode_format="utf8"):
     return [x.encode(encode_format) for x in strings]
 
-def write_matrix(scanpy_obj, dest_hdf5, raw_key):
+def write_matrix(scanpy_obj, dest_hdf5, raw_key="auto", normalize_raw=True):
     try:
-        raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
+        raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key=raw_key)
     except Exception as e:
         print("--->Cannot read raw data: %s" % str(e))
         raw_M = barcodes = features = None
 
     norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
                                                         barcodes,
-                                                        features)
+                                                        features,
+                                                        normalize_raw=normalize_raw)
 
     if raw_M is None:
         has_raw = False
@@ -257,12 +271,13 @@ def write_metadata(scanpy_obj, dest, zobj, replace_missing="Unassigned"):
         with zobj.open(dest + ("/main/metadata/%s.json" % uid), "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
 
-def write_main_folder(scanpy_obj, dest, zobj, raw_data):
+def write_main_folder(scanpy_obj, dest, zobj, raw_data="auto", normalize_raw=True):
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
         barcodes, features, has_raw = write_matrix(scanpy_obj, dest_hdf5,
-                                                    raw_data)
+                                                    raw_key=raw_data,
+                                                    normalize_raw=normalize_raw)
     print("--->Writing to zip", flush=True)
     zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
     os.remove(tmp_matrix)
@@ -353,13 +368,14 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
     with zobj.open(dest + "/run_info.json", "w") as z:
         z.write(json.dumps(run_info).encode("utf8"))
 
-def format_data(source, output_name, raw_data="auto"):
+def format_data(source, output_name, raw_data="auto", normalize_raw=True):
     scanpy_obj = scanpy.read_h5ad(source, "r")
     zobj = zipfile.ZipFile(output_name, "w")
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
     with h5py.File(source, "r") as s:
-        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
+        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data=raw_data,
+                                    normalize_raw=normalize_raw)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
         unit = "umi" if has_raw else "lognorm"
