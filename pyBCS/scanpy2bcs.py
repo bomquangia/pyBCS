@@ -12,33 +12,98 @@ import zipfile
 from pandas.api.types import is_numeric_dtype
 
 def generate_uuid(remove_hyphen=True):
+    """Generates a unique uuid string
+
+    Keyword arguments:
+        remove_hyphen: True if the hyphens should be removed from the uuid, False otherwise
+    """
     res = str(uuid.uuid4())
     if remove_hyphen == True:
         res = res.replace("-", "")
     return res
 
 def get_barcodes(scanpy_obj):
+    """Reads barcodes from a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the barcodes
+
+    Returns:
+        A numpy array that contains the barcodes
+    """
     return scanpy_obj.obs_names
 
 def get_features(scanpy_obj):
+    """Reads feature names/ids from a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the features
+
+    Returns:
+        A numpy array that contains the feature names
+    """
     return scanpy_obj.var_names
 
 def get_raw_features(scanpy_obj):
+    """Reads original/raw feature names (before filtering) from a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the features
+
+    Returns:
+        A numpy array that contains the feature names
+    """
     return scanpy_obj.raw.var.index
 
 def get_raw_from_rawX(scanpy_obj):
+    """Reads raw data from slot 'raw.X' in a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+
+    Returns:
+        A scipy.sparse.csr_matrix that represents a matrix of size (cells x genes)
+        A numpy array that contains the cell names of the matrix
+        A numpy array that contains the gene names of the matrix
+    """
     M = scanpy_obj.raw.X[:][:].tocsr()
     barcodes = get_barcodes(scanpy_obj)
     features = get_raw_features(scanpy_obj)
     return M, barcodes, features
 
 def get_raw_from_layers(scanpy_obj, raw_key):
+    """Reads raw data from a 'layers' in a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+        raw_key: The key of the raw data in slot 'layers'
+
+    Returns:
+        A scipy.sparse.csr_matrix that represents a matrix of size (cells x genes)
+        A numpy array that contains the cell names of the matrix
+        A numpy array that contains the gene names of the matrix
+    """
     M = scanpy_obj.layers[raw_key].tocsr()
     barcodes = get_barcodes(scanpy_obj)
     features = get_features(scanpy_obj)
     return M, barcodes, features
 
-def get_raw_data(scanpy_obj, raw_key):
+def get_raw_data(scanpy_obj, raw_key="auto"):
+    """Finds and reads raw data from a scanpy object
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+        raw_key: A string that specifies where to look for raw data
+                    'raw.X': Reads raw data from scanpy_obj.raw.X
+                    'auto': Looks for raw data in scanpy_obj.raw.X,
+                            scanpy_obj.layers["counts"] and scanpy_obj.layers["raw"]
+                    other: Reads raw data in scanpy_obj.layers[raw_key]
+
+    Returns:
+        A scipy.sparse.csr_matrix that represents a matrix of size (cells x genes)
+        A numpy array that contains the cell names of the matrix
+        A numpy array that contains the gene names of the matrix
+    """
     if raw_key == "auto":
         try:
             res = get_raw_from_rawX(scanpy_obj)
@@ -61,6 +126,14 @@ def get_raw_data(scanpy_obj, raw_key):
     return res
 
 def normalize_data(M):
+    """Normalizes raw data
+
+    Keyword arguments:
+        M: A scipy.sparse matrix of size (cells x genes) that contains raw data
+
+    Returns:
+        A scipy.sparse.csc_matrix of size (cells x genes) that contains log-normalized data
+    """
     M = M.tocsr()
     for i in range(M.shape[0]):
         l, r = M.indptr[i:i+2]
@@ -68,6 +141,25 @@ def normalize_data(M):
     return M.tocsc()
 
 def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features, normalize_raw=True):
+    """Reads normalized data from a scanpy object or if in need, obtains it by normalizing raw data
+
+    Keyword arguments:
+        scanpy_obj: The scanpy obj that stores the data
+        raw_data: A scipy.sparse matrix of size (cells x genes) that contains raw data
+        raw_barcodes: An array of barcodes of raw data
+        raw_features: An array of feature names of raw data
+        normalize_raw: In the case that the data stored in 'X' has a different shape
+                            from raw data, specifying this parameter as True will
+                            normalize raw data to obtain log-normalized data and
+                            specifying it as False will make the log-normalized data
+                            the same as raw data
+                        Ignored if 'X' is in the same shape as raw data
+
+    Returns:
+        A scipy.sparse.csc_matrix of shape (cells x genes) that stores log-normalized data
+        An array of barcodes of normalized data
+        An array of feature names of normalized data
+    """
     M = scanpy_obj.X[:][:].tocsc()
     norm_barcodes = scanpy_obj.obs.index
     norm_features = scanpy_obj.var.index
@@ -83,9 +175,26 @@ def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features, normal
             return raw_data.tocsc(), raw_barcodes, raw_features
 
 def encode_strings(strings, encode_format="utf8"):
+    """Converts an array/list of strings into utf8 representation
+    """
     return [x.encode(encode_format) for x in strings]
 
 def write_matrix(scanpy_obj, dest_hdf5, raw_key="auto", normalize_raw=True):
+    """Extracts data from a scanpy object and writes to /main/matrix.hdf5
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+        dest_hdf5: An opened-for-write h5py.File
+        raw_key: Where to look for raw data in the scanpy object. See 'get_raw_data'
+                    for mor details
+        normalize_raw: Whether or not to normalize data from raw data.
+                        See 'get_normalized_data' for more details
+
+    Returns:
+        An array that contains the cell barcodes
+        An array that contains the gene names
+        A boolean variable indicating if the scanpy object has raw data
+    """
     try:
         raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key=raw_key)
     except Exception as e:
@@ -165,6 +274,8 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key="auto", normalize_raw=True):
     return barcodes, features, has_raw
 
 def generate_history_object():
+    """Generates a Bioturing-format history object
+    """
     return {
         "created_by":"bbrowser_format_converter",
         "created_at":time.time() * 1000,
@@ -188,6 +299,17 @@ def add_category_to_first(column, new_category):
     return column
 
 def write_metadata(scanpy_obj, dest, zobj, replace_missing="Unassigned"):
+    """Reads metadata from a scanpy object and writes to /main/metadata
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the metadata
+        dest: The directory that stores the study after the extraction
+        zobj: A opened-for-write ZipFile object that stores the compressed study
+        replace_missing: Replace nan/missing values by this value
+
+    Returns:
+        None
+    """
     print("Writing main/metadata/metalist.json")
     metadata = scanpy_obj.obs.copy()
     for metaname in metadata.columns:
@@ -272,6 +394,19 @@ def write_metadata(scanpy_obj, dest, zobj, replace_missing="Unassigned"):
             z.write(json.dumps(obj).encode("utf8"))
 
 def write_main_folder(scanpy_obj, dest, zobj, raw_key="auto", normalize_raw=True):
+    """Reads data from a scanpy object and write it to /main
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+        dest: The directory that stores the study after the extraction
+        zobj: A opened-for-write ZipFile object that stores the compressed study
+        raw_key: Where to look for raw data. See 'get_raw_data' for more details
+        normalize_raw: Whether or not to normalize data. See 'get_normalized_data'
+                        for more details
+
+    Returns:
+        None
+    """
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
@@ -297,6 +432,16 @@ def write_main_folder(scanpy_obj, dest, zobj, raw_key="auto", normalize_raw=True
     return has_raw
 
 def write_dimred(scanpy_obj, dest, zobj):
+    """Reads dimred data from a scanpy object and writes it to /main/dimred
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the dimred
+        dest: The directory that stores the study after the extraction
+        zobj: A opened-for-write ZipFile object that stores the compressed study
+
+    Returns:
+        None
+    """
     print("Writing dimred")
     data = {}
     default_dimred = None
@@ -345,6 +490,15 @@ def write_dimred(scanpy_obj, dest, zobj):
 
 
 def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
+    """Writes runinfo.json
+
+    Keyword arguments:
+        scanpy_obj: The scanpy object that stores the data
+        dest: The directory that stores the study after the extraction
+        study_id: A uuid-generated study id
+        zobj: A opened-for-write ZipFile object that stores the compressed study
+        unit: Unit of the dataset, must be in ["umi", "lognorm"]
+    """
     print("Writing run_info.json", flush=True)
     runinfo_history = generate_history_object()
     runinfo_history["hash_id"] = study_id
@@ -369,6 +523,26 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
         z.write(json.dumps(run_info).encode("utf8"))
 
 def format_data(source, output_name, raw_key="auto", normalize_raw=True):
+    """Converts from a scanpy object to BioTuring Compressed Study format
+
+    Keyword arguments:
+        source: Path to the scanpy object
+        output_name: Path to output file
+        raw_key: A string that specifies where to look for raw data
+                    'raw.X': Reads raw data from scanpy_obj.raw.X
+                    'auto': Looks for raw data in scanpy_obj.raw.X,
+                            scanpy_obj.layers["counts"] and scanpy_obj.layers["raw"]
+                    other: Reads raw data in scanpy_obj.layers[raw_key]
+        normalize_raw: In the case that the data stored in 'X' has a different shape
+                            from raw data, specifying this parameter as True will
+                            normalize raw data to obtain log-normalized data and
+                            specifying it as False will make the log-normalized data
+                            the same as raw data
+                        Ignored if 'X' is in the same shape as raw data
+
+    Returns:
+        Path to output file
+    """
     scanpy_obj = scanpy.read_h5ad(source, "r")
     zobj = zipfile.ZipFile(output_name, "w")
     study_id = generate_uuid(remove_hyphen=False)
