@@ -257,12 +257,12 @@ def write_metadata(scanpy_obj, dest, zobj, replace_missing="Unassigned"):
         with zobj.open(dest + ("/main/metadata/%s.json" % uid), "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
 
-def write_main_folder(scanpy_obj, dest, zobj, raw_data):
+def write_main_folder(scanpy_obj, dest, zobj, raw_key="auto"):
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
         barcodes, features, has_raw = write_matrix(scanpy_obj, dest_hdf5,
-                                                    raw_data)
+                                                    raw_key=raw_key)
     print("--->Writing to zip", flush=True)
     zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
     os.remove(tmp_matrix)
@@ -357,7 +357,7 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
     with zobj.open(dest + "/run_info.json", "w") as z:
         z.write(json.dumps(run_info).encode("utf8"))
 
-def format_data(source, output_name, raw_data="auto"):
+def format_data(source, output_name, raw_key="auto"):
     scanpy_obj = scanpy.read_h5ad(source, "r")
     zobj = zipfile.ZipFile(output_name, "w")
     study_id = generate_uuid(remove_hyphen=False)
@@ -365,7 +365,7 @@ def format_data(source, output_name, raw_data="auto"):
     with h5py.File(source, "r") as s:
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
-        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
+        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_key=raw_key)
         unit = "umi" if has_raw else "lognorm"
         write_runinfo(scanpy_obj, dest, study_id, zobj, unit)
 
