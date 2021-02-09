@@ -11,17 +11,6 @@ import shutil
 import zipfile
 from pandas.api.types import is_numeric_dtype
 
-def copy_dataset(source, dest, name, chunk_size=16*1024):
-    dataset = dest.create_dataset(name, shape=source[name].shape, dtype=source[name].dtype)
-    i = 0
-    while i + chunk_size <= source[name].shape[0]:
-        dataset[i:i+chunk_size] = source[name][i:i+chunk_size]
-        i += chunk_size
-
-    if i < source[name].shape[0]:
-        dataset[i:] = source[name][i:]
-
-
 def generate_uuid(remove_hyphen=True):
     res = str(uuid.uuid4())
     if remove_hyphen == True:
@@ -168,25 +157,6 @@ def generate_history_object():
         "hash_id":generate_uuid(),
         "description":"Created by converting scanpy object to bbrowser format"
     }
-
-def is_all_numeric(a):
-    try:
-        a = [float(x) for x in a]
-    except:
-        return False
-    return True
-
-def convert_to_int(a):
-    try:
-        return [int(x) for x in a]
-    except:
-        return None
-
-def convert_to_float(a):
-    try:
-        return [float(x) for x in a]
-    except:
-        return None
 
 def add_category_to_first(column, new_category):
     if column.dtype.name != "category":
