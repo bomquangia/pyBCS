@@ -19,4 +19,8 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
+    install_requires=[
+        "scanpy>=1.6.0",
+        "anndata>=0.7"
+    ]
 )
