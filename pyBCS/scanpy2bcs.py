@@ -254,6 +254,17 @@ def generate_history_object():
     }
 
 def add_category_to_first(column, new_category):
+    """Adds a new category to a pd.Categorical object
+
+    Keyword arguments:
+        column: The pd.Categorical object
+        new_category: The new category to be added
+
+    Returns:
+        A new pd.Categorical object that is almost the same as the given one,
+            except for a new category is added (if it is not already included in the original object).
+            The new category is added to first in the categories list.
+    """
     if column.dtype.name != "category":
         raise Exception("Object is not a pandas.Categorical")
 
