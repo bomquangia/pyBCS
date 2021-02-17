@@ -151,6 +151,9 @@ def add_category_to_first(column, new_category):
     if column.dtype.name != "category":
         raise Exception("Object is not a pandas.Categorical")
 
+    if new_category in column.cat.categories:
+        raise Exception("%s is already in categories list" % new_category)
+
     column = column.copy()
     column = column.cat.add_categories(new_category)
     cat = column.cat.categories.tolist()
