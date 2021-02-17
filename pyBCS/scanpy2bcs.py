@@ -147,7 +147,22 @@ def convert_to_float(a):
     except:
         return None
 
-def write_metadata(scanpy_obj, dest, zobj):
+def add_category_to_first(column, new_category):
+    if column.dtype.name != "category":
+        raise Exception("Object is not a pandas.Categorical")
+
+    if new_category in column.cat.categories:
+        raise Exception("%s is already in categories list" % new_category)
+
+    column = column.copy()
+    column = column.cat.add_categories(new_category)
+    cat = column.cat.categories.tolist()
+    cat = cat[0:-1]
+    cat.insert(0, new_category)
+    column = column.cat.reorder_categories(cat)
+    return column
+
+def write_metadata(scanpy_obj, dest, zobj, replace_missing="Unassigned"):
     print("Writing main/metadata/metalist.json")
     metadata = scanpy_obj.obs.copy()
     for metaname in metadata.columns:
@@ -169,16 +184,21 @@ def write_metadata(scanpy_obj, dest, zobj):
             names = "NaN"
             _type = "numeric"
         elif metaname in category_meta:
+            if replace_missing not in metadata[metaname].cat.categories:
+                metadata[metaname] = add_category_to_first(metadata[metaname],
+                                                            new_category=replace_missing)
+            metadata[metaname].fillna(replace_missing, inplace=True)
+
             value_to_index = {}
             for x, y in enumerate(metadata[metaname].cat.categories):
                 value_to_index[y] = x
-            all_clusters[uid] = [value_to_index[x] + 1 for x in metadata[metaname]]
+            all_clusters[uid] = [value_to_index[x] for x in metadata[metaname]]
             index, counts = np.unique(all_clusters[uid], return_counts = True)
-            lengths = np.array([0] * (len(index) + 1))
+            lengths = np.array([0] * len(metadata[metaname].cat.categories))
             lengths[index] = counts
             lengths = [x.item() for x in lengths]
             _type = "category"
-            names = ["Unassigned"] + list(metadata[metaname].cat.categories)
+            names = list(metadata[metaname].cat.categories)
         else:
             print("--->\"%s\" is not numeric or categorical, ignoring" % metaname)
             continue
