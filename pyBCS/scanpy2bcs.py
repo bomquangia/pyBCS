@@ -159,7 +159,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     if has_raw:
         colsum_group.create_dataset("log", data=sum_log)
         colsum_group.create_dataset("raw", data=sum_raw)
-    return barcodes, features
+    return barcodes, features, has_raw
 
 def generate_history_object():
     return {
@@ -291,7 +291,8 @@ def write_main_folder(scanpy_obj, dest, zobj, raw_data):
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
-        barcodes, features = write_matrix(scanpy_obj, dest_hdf5, raw_data)
+        barcodes, features, has_raw = write_matrix(scanpy_obj, dest_hdf5,
+                                                    raw_data)
     print("--->Writing to zip", flush=True)
     zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
     os.remove(tmp_matrix)
@@ -308,6 +309,7 @@ def write_main_folder(scanpy_obj, dest, zobj, raw_data):
     obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
     with zobj.open(dest + "/main/gene_gallery.json", "w") as z:
         z.write(json.dumps(obj).encode("utf8"))
+    return has_raw
 
 def write_dimred(scanpy_obj, dest, zobj):
     print("Writing dimred")
@@ -357,7 +359,7 @@ def write_dimred(scanpy_obj, dest, zobj):
         z.write(json.dumps(meta).encode("utf8"))
 
 
-def write_runinfo(scanpy_obj, dest, study_id, zobj):
+def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="UMI count"):
     print("Writing run_info.json", flush=True)
     runinfo_history = generate_history_object()
     runinfo_history["hash_id"] = study_id
@@ -375,7 +377,8 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj):
         "platform":"unknown",
         "omics":["RNA"],
         "title":["Created by bbrowser converter"],
-        "history":[runinfo_history]
+        "history":[runinfo_history],
+        "unit":unit
     }
     with zobj.open(dest + "/run_info.json", "w") as z:
         z.write(json.dumps(run_info).encode("utf8"))
@@ -386,10 +389,11 @@ def format_data(source, output_name, raw_data="auto"):
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
     with h5py.File(source, "r") as s:
-        write_main_folder(scanpy_obj, dest, zobj, raw_data)
+        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
-        write_runinfo(scanpy_obj, dest, study_id, zobj)
+        unit = "UMI count" if has_raw else "lognorm"
+        write_runinfo(scanpy_obj, dest, study_id, zobj, unit)
 
     return output_name
 
