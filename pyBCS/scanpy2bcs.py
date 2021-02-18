@@ -120,6 +120,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     normalizedT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 
     print("--->Writing group \"colsum\"")
+    norm_M = norm_M.tocsr()
     n_cells = len(barcodes)
     sum_log = np.array([0.0] * n_cells)
     sum_lognorm = np.array([0.0] * n_cells)
@@ -128,7 +129,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
         l, r = raw_M.indptr[i:i+2]
         sum_raw[i] = np.sum(raw_M.data[l:r])
         sum_log[i] = np.sum(np.log2(raw_M.data[l:r] + 1))
-        sum_lognorm[i] = np.sum(np.log2(raw_M.data[l:r] / sum_raw[i] * 10000 + 1))
+        sum_lognorm[i] = np.sum(norm_M.data[l:r])
     colsum_group = dest_hdf5.create_group("colsum")
     colsum_group.create_dataset("log", data=sum_log)
     colsum_group.create_dataset("lognorm", data=sum_lognorm)
