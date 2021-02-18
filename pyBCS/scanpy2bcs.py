@@ -87,7 +87,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     try:
         raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
     except Exception as e:
-        print("Cannot read raw data: %s" % str(e))
+        print("--->Cannot read raw data: %s" % str(e))
         raw_M = barcodes = features = None
 
     norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
@@ -96,6 +96,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
 
     if raw_M is None:
         has_raw = False
+        print("--->Using normalized data as raw data")
         raw_M = norm_M.tocsr()
     else:
         has_raw = True
@@ -111,6 +112,21 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     bioturing_group.create_dataset("indptr", data=raw_M.indptr)
     bioturing_group.create_dataset("feature_type", data=["RNA".encode("utf8")] * len(features))
     bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
+
+    if has_raw:
+        print("--->Writing group \"countsT\"")
+        raw_M_T = raw_M.tocsc()
+        countsT_group = dest_hdf5.create_group("countsT")
+        countsT_group.create_dataset("barcodes",
+                                        data=encode_strings(features))
+        countsT_group.create_dataset("features",
+                                        data=encode_strings(barcodes))
+        countsT_group.create_dataset("data", data=raw_M_T.data)
+        countsT_group.create_dataset("indices", data=raw_M_T.indices)
+        countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
+        countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
+    else:
+        print("--->Raw data is not available, ignoring \"countsT\"")
 
     print("--->Writing group \"normalizedT\"")
     normalizedT_group = dest_hdf5.create_group("normalizedT")
