@@ -71,18 +71,31 @@ def get_raw_data(scanpy_obj, raw_key):
         res = get_raw_from_layers(scanpy_obj, raw_key)
     return res
 
-def get_normalized_data(scanpy_obj, raw_data):
+def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features):
     M = scanpy_obj.X[:][:].tocsc()
-    if M.shape == raw_data.shape:
-        return M
+    norm_barcodes = scanpy_obj.obs.index
+    norm_features = scanpy_obj.var.index
+    if (raw_data is None) or (M.shape == raw_data.shape):
+        return M, norm_barcodes, norm_features
     else:
-        return raw_data.tocsc()
+        return raw_data.tocsc(), raw_barcodes, raw_features
 
 def encode_strings(strings, encode_format="utf8"):
     return [x.encode(encode_format) for x in strings]
 
 def write_matrix(scanpy_obj, dest_hdf5, raw_key):
-    raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
+    try:
+        raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
+    except Exception as e:
+        print("Cannot read raw data: %s" % str(e))
+        raw_M = barcodes = features = None
+
+    norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
+                                                        barcodes,
+                                                        features)
+    if raw_M is None:
+        raw_M = norm_M.tocsr()
+
     print("--->Writing group \"bioturing\"")
     bioturing_group = dest_hdf5.create_group("bioturing")
     bioturing_group.create_dataset("barcodes",
@@ -95,20 +108,7 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     bioturing_group.create_dataset("feature_type", data=["RNA".encode("utf8")] * len(features))
     bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
 
-    print("--->Writing group \"countsT\"")
-    raw_M_T = raw_M.tocsc()
-    countsT_group = dest_hdf5.create_group("countsT")
-    countsT_group.create_dataset("barcodes",
-                                    data=encode_strings(features))
-    countsT_group.create_dataset("features",
-                                    data=encode_strings(barcodes))
-    countsT_group.create_dataset("data", data=raw_M_T.data)
-    countsT_group.create_dataset("indices", data=raw_M_T.indices)
-    countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
-    countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
-
     print("--->Writing group \"normalizedT\"")
-    norm_M = get_normalized_data(scanpy_obj, raw_M_T)
     normalizedT_group = dest_hdf5.create_group("normalizedT")
     normalizedT_group.create_dataset("barcodes",
                                     data=encode_strings(features))
