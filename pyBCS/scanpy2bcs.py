@@ -93,8 +93,12 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
                                                         barcodes,
                                                         features)
+
     if raw_M is None:
+        has_raw = False
         raw_M = norm_M.tocsr()
+    else:
+        has_raw = True
 
     print("--->Writing group \"bioturing\"")
     bioturing_group = dest_hdf5.create_group("bioturing")
@@ -122,18 +126,23 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     print("--->Writing group \"colsum\"")
     norm_M = norm_M.tocsr()
     n_cells = len(barcodes)
-    sum_log = np.array([0.0] * n_cells)
     sum_lognorm = np.array([0.0] * n_cells)
-    sum_raw = np.array([0.0] * n_cells)
+    if has_raw:
+        sum_log = np.array([0.0] * n_cells)
+        sum_raw = np.array([0.0] * n_cells)
+
     for i in range(n_cells):
         l, r = raw_M.indptr[i:i+2]
-        sum_raw[i] = np.sum(raw_M.data[l:r])
-        sum_log[i] = np.sum(np.log2(raw_M.data[l:r] + 1))
         sum_lognorm[i] = np.sum(norm_M.data[l:r])
+        if has_raw:
+            sum_raw[i] = np.sum(raw_M.data[l:r])
+            sum_log[i] = np.sum(np.log2(raw_M.data[l:r] + 1))
+
     colsum_group = dest_hdf5.create_group("colsum")
-    colsum_group.create_dataset("log", data=sum_log)
     colsum_group.create_dataset("lognorm", data=sum_lognorm)
-    colsum_group.create_dataset("raw", data=sum_raw)
+    if has_raw:
+        colsum_group.create_dataset("log", data=sum_log)
+        colsum_group.create_dataset("raw", data=sum_raw)
     return barcodes, features
 
 def generate_history_object():
