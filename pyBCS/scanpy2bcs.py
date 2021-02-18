@@ -71,18 +71,36 @@ def get_raw_data(scanpy_obj, raw_key):
         res = get_raw_from_layers(scanpy_obj, raw_key)
     return res
 
-def get_normalized_data(scanpy_obj, raw_data):
+def get_normalized_data(scanpy_obj, raw_data, raw_barcodes, raw_features):
     M = scanpy_obj.X[:][:].tocsc()
-    if M.shape == raw_data.shape:
-        return M
+    norm_barcodes = scanpy_obj.obs.index
+    norm_features = scanpy_obj.var.index
+    if (raw_data is None) or (M.shape == raw_data.shape):
+        return M, norm_barcodes, norm_features
     else:
-        return raw_data.tocsc()
+        return raw_data.tocsc(), raw_barcodes, raw_features
 
 def encode_strings(strings, encode_format="utf8"):
     return [x.encode(encode_format) for x in strings]
 
 def write_matrix(scanpy_obj, dest_hdf5, raw_key):
-    raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
+    try:
+        raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
+    except Exception as e:
+        print("--->Cannot read raw data: %s" % str(e))
+        raw_M = barcodes = features = None
+
+    norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
+                                                        barcodes,
+                                                        features)
+
+    if raw_M is None:
+        has_raw = False
+        print("--->Using normalized data as raw data")
+        raw_M = norm_M.tocsr()
+    else:
+        has_raw = True
+
     print("--->Writing group \"bioturing\"")
     bioturing_group = dest_hdf5.create_group("bioturing")
     bioturing_group.create_dataset("barcodes",
@@ -95,20 +113,22 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     bioturing_group.create_dataset("feature_type", data=["RNA".encode("utf8")] * len(features))
     bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
 
-    print("--->Writing group \"countsT\"")
-    raw_M_T = raw_M.tocsc()
-    countsT_group = dest_hdf5.create_group("countsT")
-    countsT_group.create_dataset("barcodes",
-                                    data=encode_strings(features))
-    countsT_group.create_dataset("features",
-                                    data=encode_strings(barcodes))
-    countsT_group.create_dataset("data", data=raw_M_T.data)
-    countsT_group.create_dataset("indices", data=raw_M_T.indices)
-    countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
-    countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
+    if has_raw:
+        print("--->Writing group \"countsT\"")
+        raw_M_T = raw_M.tocsc()
+        countsT_group = dest_hdf5.create_group("countsT")
+        countsT_group.create_dataset("barcodes",
+                                        data=encode_strings(features))
+        countsT_group.create_dataset("features",
+                                        data=encode_strings(barcodes))
+        countsT_group.create_dataset("data", data=raw_M_T.data)
+        countsT_group.create_dataset("indices", data=raw_M_T.indices)
+        countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
+        countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
+    else:
+        print("--->Raw data is not available, ignoring \"countsT\"")
 
     print("--->Writing group \"normalizedT\"")
-    norm_M = get_normalized_data(scanpy_obj, raw_M_T)
     normalizedT_group = dest_hdf5.create_group("normalizedT")
     normalizedT_group.create_dataset("barcodes",
                                     data=encode_strings(features))
@@ -122,19 +142,24 @@ def write_matrix(scanpy_obj, dest_hdf5, raw_key):
     print("--->Writing group \"colsum\"")
     norm_M = norm_M.tocsr()
     n_cells = len(barcodes)
-    sum_log = np.array([0.0] * n_cells)
     sum_lognorm = np.array([0.0] * n_cells)
-    sum_raw = np.array([0.0] * n_cells)
+    if has_raw:
+        sum_log = np.array([0.0] * n_cells)
+        sum_raw = np.array([0.0] * n_cells)
+
     for i in range(n_cells):
         l, r = raw_M.indptr[i:i+2]
-        sum_raw[i] = np.sum(raw_M.data[l:r])
-        sum_log[i] = np.sum(np.log2(raw_M.data[l:r] + 1))
         sum_lognorm[i] = np.sum(norm_M.data[l:r])
+        if has_raw:
+            sum_raw[i] = np.sum(raw_M.data[l:r])
+            sum_log[i] = np.sum(np.log2(raw_M.data[l:r] + 1))
+
     colsum_group = dest_hdf5.create_group("colsum")
-    colsum_group.create_dataset("log", data=sum_log)
     colsum_group.create_dataset("lognorm", data=sum_lognorm)
-    colsum_group.create_dataset("raw", data=sum_raw)
-    return barcodes, features
+    if has_raw:
+        colsum_group.create_dataset("log", data=sum_log)
+        colsum_group.create_dataset("raw", data=sum_raw)
+    return barcodes, features, has_raw
 
 def generate_history_object():
     return {
@@ -266,7 +291,8 @@ def write_main_folder(scanpy_obj, dest, zobj, raw_data):
     print("Writing main/matrix.hdf5", flush=True)
     tmp_matrix = "." + str(uuid.uuid4())
     with h5py.File(tmp_matrix, "w") as dest_hdf5:
-        barcodes, features = write_matrix(scanpy_obj, dest_hdf5, raw_data)
+        barcodes, features, has_raw = write_matrix(scanpy_obj, dest_hdf5,
+                                                    raw_data)
     print("--->Writing to zip", flush=True)
     zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
     os.remove(tmp_matrix)
@@ -283,6 +309,7 @@ def write_main_folder(scanpy_obj, dest, zobj, raw_data):
     obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
     with zobj.open(dest + "/main/gene_gallery.json", "w") as z:
         z.write(json.dumps(obj).encode("utf8"))
+    return has_raw
 
 def write_dimred(scanpy_obj, dest, zobj):
     print("Writing dimred")
@@ -332,7 +359,7 @@ def write_dimred(scanpy_obj, dest, zobj):
         z.write(json.dumps(meta).encode("utf8"))
 
 
-def write_runinfo(scanpy_obj, dest, study_id, zobj):
+def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
     print("Writing run_info.json", flush=True)
     runinfo_history = generate_history_object()
     runinfo_history["hash_id"] = study_id
@@ -350,7 +377,8 @@ def write_runinfo(scanpy_obj, dest, study_id, zobj):
         "platform":"unknown",
         "omics":["RNA"],
         "title":["Created by bbrowser converter"],
-        "history":[runinfo_history]
+        "history":[runinfo_history],
+        "unit":unit
     }
     with zobj.open(dest + "/run_info.json", "w") as z:
         z.write(json.dumps(run_info).encode("utf8"))
@@ -361,10 +389,11 @@ def format_data(source, output_name, raw_data="auto"):
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
     with h5py.File(source, "r") as s:
-        write_main_folder(scanpy_obj, dest, zobj, raw_data)
+        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
-        write_runinfo(scanpy_obj, dest, study_id, zobj)
+        unit = "umi" if has_raw else "lognorm"
+        write_runinfo(scanpy_obj, dest, study_id, zobj, unit)
 
     return output_name
 
