@@ -359,7 +359,7 @@ def write_dimred(scanpy_obj, dest, zobj):
         z.write(json.dumps(meta).encode("utf8"))
 
 
-def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="UMI count"):
+def write_runinfo(scanpy_obj, dest, study_id, zobj, unit="umi"):
     print("Writing run_info.json", flush=True)
     runinfo_history = generate_history_object()
     runinfo_history["hash_id"] = study_id
@@ -392,7 +392,7 @@ def format_data(source, output_name, raw_data="auto"):
         has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
-        unit = "UMI count" if has_raw else "lognorm"
+        unit = "umi" if has_raw else "lognorm"
         write_runinfo(scanpy_obj, dest, study_id, zobj, unit)
 
     return output_name
