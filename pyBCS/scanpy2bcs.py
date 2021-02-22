@@ -315,6 +315,7 @@ def write_dimred(scanpy_obj, dest, zobj):
     print("Writing dimred")
     data = {}
     default_dimred = None
+    has_dimred = False
     for dimred in scanpy_obj.obsm:
         if isinstance(scanpy_obj.obsm[dimred], np.ndarray) == False:
             print("--->%s is not a numpy.ndarray, ignoring" % dimred)
@@ -347,6 +348,9 @@ def write_dimred(scanpy_obj, dest, zobj):
         }
         with zobj.open(dest + "/main/dimred/" + coords["id"], "w") as z:
             z.write(json.dumps(coords).encode("utf8"))
+        has_dimred = True
+    if has_dimred == False:
+        raise Exception("No embeddings in \"obsm\" found")
     meta = {
         "data":data,
         "version":1,
@@ -389,9 +393,9 @@ def format_data(source, output_name, raw_data="auto"):
     study_id = generate_uuid(remove_hyphen=False)
     dest = study_id
     with h5py.File(source, "r") as s:
-        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
         write_metadata(scanpy_obj, dest, zobj)
         write_dimred(scanpy_obj, dest, zobj)
+        has_raw = write_main_folder(scanpy_obj, dest, zobj, raw_data)
         unit = "umi" if has_raw else "lognorm"
         write_runinfo(scanpy_obj, dest, study_id, zobj, unit)
 
