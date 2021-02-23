@@ -10,6 +10,35 @@ import time
 import shutil
 import zipfile
 from pandas.api.types import is_numeric_dtype
+from abc import ABC, abstractmethod
+
+class DataObject(ABC):
+    def __init__(self, source):
+        pass
+
+    def get_normalized_data(self):
+        pass
+
+    def get_raw_data(self):
+        pass
+
+    def get_barcodes(self):
+        pass
+
+    def get_raw_barcodes(self):
+        pass
+
+    def get_features(self):
+        pass
+
+    def get_raw_features(self):
+        pass
+
+    def get_metadata(self):
+        pass
+
+    def get_dimred(self):
+        pass
 
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
