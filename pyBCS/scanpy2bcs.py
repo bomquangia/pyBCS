@@ -185,10 +185,10 @@ class DataObject(ABC):
         if len(dimred_data.keys()) == 0:
             raise Exception("No dimred data found")
         for dimred in dimred_data:
-            print("--->Writing %s" % dimred)
+            print("Writing %s" % dimred)
             matrix = dimred_data[dimred]
             if matrix.shape[1] > 3:
-                print("--->%s has more than 3 dimensions, using only the first 3 of them" % dimred)
+                print("%s has more than 3 dimensions, using only the first 3 of them" % dimred)
                 matrix = matrix[:, 0:3]
             n_shapes = matrix.shape
 
@@ -496,15 +496,15 @@ def generate_uuid(remove_hyphen=True):
 #        try:
 #            res = get_raw_from_rawX(scanpy_obj)
 #        except Exception as e:
-#            print("--->Error when reading \"raw.X\": ", e)
-#            print("--->Trying possible keys")
+#            print("Error when reading \"raw.X\": ", e)
+#            print("Trying possible keys")
 #            candidate_keys = ["counts", "raw"]
 #            for key in candidate_keys:
 #                try:
 #                    res = get_raw_from_layers(scanpy_obj, key)
 #                except:
 #                    continue
-#                print("--->Found raw data in /layers/%s" % key)
+#                print("Found raw data in /layers/%s" % key)
 #                return res
 #            raise Exception("Raw data not found")
 #    elif raw_key == "raw.X":
@@ -557,7 +557,7 @@ def encode_strings(strings, encode_format="utf8"):
 #    try:
 #        raw_M, barcodes, features = get_raw_data(scanpy_obj, raw_key)
 #    except Exception as e:
-#        print("--->Cannot read raw data: %s" % str(e))
+#        print("Cannot read raw data: %s" % str(e))
 #        raw_M = barcodes = features = None
 #
 #    norm_M, barcodes, features = get_normalized_data(scanpy_obj, raw_M,
@@ -566,12 +566,12 @@ def encode_strings(strings, encode_format="utf8"):
 #
 #    if raw_M is None:
 #        has_raw = False
-#        print("--->Using normalized data as raw data")
+#        print("Using normalized data as raw data")
 #        raw_M = norm_M.tocsr()
 #    else:
 #        has_raw = True
 #
-#    print("--->Writing group \"bioturing\"")
+#    print("Writing group \"bioturing\"")
 #    bioturing_group = dest_hdf5.create_group("bioturing")
 #    bioturing_group.create_dataset("barcodes",
 #                                    data=encode_strings(barcodes))
@@ -584,7 +584,7 @@ def encode_strings(strings, encode_format="utf8"):
 #    bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
 #
 #    if has_raw:
-#        print("--->Writing group \"countsT\"")
+#        print("Writing group \"countsT\"")
 #        raw_M_T = raw_M.tocsc()
 #        countsT_group = dest_hdf5.create_group("countsT")
 #        countsT_group.create_dataset("barcodes",
@@ -596,9 +596,9 @@ def encode_strings(strings, encode_format="utf8"):
 #        countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
 #        countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 #    else:
-#        print("--->Raw data is not available, ignoring \"countsT\"")
+#        print("Raw data is not available, ignoring \"countsT\"")
 #
-#    print("--->Writing group \"normalizedT\"")
+#    print("Writing group \"normalizedT\"")
 #    normalizedT_group = dest_hdf5.create_group("normalizedT")
 #    normalizedT_group.create_dataset("barcodes",
 #                                    data=encode_strings(features))
@@ -609,7 +609,7 @@ def encode_strings(strings, encode_format="utf8"):
 #    normalizedT_group.create_dataset("indptr", data=norm_M.indptr)
 #    normalizedT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 #
-#    print("--->Writing group \"colsum\"")
+#    print("Writing group \"colsum\"")
 #    norm_M = norm_M.tocsr()
 #    n_cells = len(barcodes)
 #    sum_lognorm = np.array([0.0] * n_cells)
@@ -685,7 +685,7 @@ def add_category_to_first(column, new_category):
 #        try:
 #            metadata[metaname] = pd.to_numeric(metadata[metaname], downcast="float")
 #        except:
-#            print("--->Cannot convert %s to numeric, treating as categorical" % metaname)
+#            print("Cannot convert %s to numeric, treating as categorical" % metaname)
 #
 #    content = {}
 #    all_clusters = {}
@@ -716,7 +716,7 @@ def add_category_to_first(column, new_category):
 #            _type = "category"
 #            names = list(metadata[metaname].cat.categories)
 #        else:
-#            print("--->\"%s\" is not numeric or categorical, ignoring" % metaname)
+#            print("\"%s\" is not numeric or categorical, ignoring" % metaname)
 #            continue
 #
 #
@@ -779,7 +779,7 @@ def add_category_to_first(column, new_category):
 #    with h5py.File(tmp_matrix, "w") as dest_hdf5:
 #        barcodes, features, has_raw = write_matrix(scanpy_obj, dest_hdf5,
 #                                                    raw_key=raw_key)
-#    print("--->Writing to zip", flush=True)
+#    print("Writing to zip", flush=True)
 #    zobj.write(tmp_matrix, dest + "/main/matrix.hdf5")
 #    os.remove(tmp_matrix)
 #
@@ -814,12 +814,12 @@ def add_category_to_first(column, new_category):
 #    has_dimred = False
 #    for dimred in scanpy_obj.obsm:
 #        if isinstance(scanpy_obj.obsm[dimred], np.ndarray) == False:
-#            print("--->%s is not a numpy.ndarray, ignoring" % dimred)
+#            print("%s is not a numpy.ndarray, ignoring" % dimred)
 #            continue
-#        print("--->Writing %s" % dimred)
+#        print("Writing %s" % dimred)
 #        matrix = scanpy_obj.obsm[dimred]
 #        if matrix.shape[1] > 3:
-#            print("--->%s has more than 3 dimensions, using only the first 3 of them" % dimred)
+#            print("%s has more than 3 dimensions, using only the first 3 of them" % dimred)
 #            matrix = matrix[:, 0:3]
 #        n_shapes = matrix.shape
 #
