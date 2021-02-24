@@ -612,8 +612,11 @@ class SpringData(DataObject):
             obj = json.load(f)
         for key in obj:
             obj[key] = obj[key]["label_list"]
-        return pd.DataFrame.from_dict(obj)
-
+        metadata = pd.DataFrame.from_dict(obj)
+        for meta in metadata:
+            if len(np.unique(metadata[meta])) < len(metadata[meta]):
+                metadata[meta] = pd.Series(metadata[meta], dtype="category")
+        return metadata
 
     def get_dimred(self):
         df = pd.read_csv(os.path.join(self.source, "FullDataset_v1",
