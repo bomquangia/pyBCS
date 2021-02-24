@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 import abc
 
 class DataObject(ABC):
-    def __init__(self, source):
+    def __init__(self, source, graph_based):
         """Constructor of DataObject class
 
         Keyword arguments:
@@ -24,6 +24,7 @@ class DataObject(ABC):
             None
         """
         self.source = source
+        self.graph_based = graph_based
 
     def get_n_cells(self):
         """Gets the number of cells
@@ -198,6 +199,8 @@ class DataObject(ABC):
         print("Writing main/metadata/metalist.json")
         metadata = self.get_metadata()
         for metaname in metadata.columns:
+            if metaname == self.graph_based:
+                continue
             try:
                 metadata[metaname] = pd.to_numeric(metadata[metaname],
                                                     downcast="float")
@@ -208,6 +211,7 @@ class DataObject(ABC):
         all_clusters = {}
         numeric_meta = metadata.select_dtypes(include=["number"]).columns
         category_meta = metadata.select_dtypes(include=["category"]).columns
+        graph_based_uid = None
         for metaname in metadata.columns:
             uid = generate_uuid()
 
@@ -245,32 +249,41 @@ class DataObject(ABC):
                 "type":_type,
                 "history":[generate_history_object()]
             }
+            if metaname == self.graph_based:
+                graph_based_uid = uid
 
         graph_based_history = generate_history_object()
         graph_based_history["hash_id"] = "graph_based"
         n_cells = self.get_n_cells()
-        content["graph_based"] = {
-            "id":"graph_based",
-            "name":"Graph-based clusters",
-            "clusterLength":[0, n_cells],
-            "clusterName":["Unassigned", "Cluster 1"],
-            "type":"category",
-            "history":[graph_based_history]
-        }
+        if graph_based_uid is not None:
+            print("Found graph based clustering in metadata with keyword %s" % self.graph_based)
+            content["graph_based"] = content[graph_based_uid].copy()
+            content["graph_based"]["id"] = "graph_based"
+            content["graph_based"]["name"] = "Graph based clusters"
+            content["graph_based"]["history"] = [graph_based_history]
+            all_clusters["graph_based"] = all_clusters[graph_based_uid]
+            del content[graph_based_uid]
+        else:
+            print("Cannot find graph based clustering in metadata with keyword \"%s\", generating a fake one" % self.graph_based)
+            content["graph_based"] = {
+                "id":"graph_based",
+                "name":"Graph-based clusters",
+                "clusterLength":[0, n_cells],
+                "clusterName":["Unassigned", "Cluster 1"],
+                "type":"category",
+                "history":[graph_based_history]
+            }
+            all_clusters["graph_based"] = [1] * n_cells
         with zobj.open(root_name + "/main/metadata/metalist.json", "w") as z:
             z.write(json.dumps({"content":content, "version":1}).encode("utf8"))
 
 
         for uid in content:
             print("Writing main/metadata/%s.json" % uid, flush=True)
-            if uid == "graph_based":
-                clusters = [1] * n_cells
-            else:
-                clusters = all_clusters[uid]
             obj = {
                 "id":content[uid]["id"],
                 "name":content[uid]["name"],
-                "clusters":clusters,
+                "clusters":all_clusters[uid],
                 "clusterName":content[uid]["clusterName"],
                 "clusterLength":content[uid]["clusterLength"],
                 "history":content[uid]["history"],
@@ -497,8 +510,9 @@ class DataObject(ABC):
         return output_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, raw_key="counts"):
-        DataObject.__init__(self, source=source)
+    def __init__(self, source, graph_based, raw_key="counts"):
+        DataObject.__init__(self, source=source,
+                            graph_based="louvain" if graph_based is None else graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
 
@@ -539,8 +553,9 @@ class ScanpyData(DataObject):
         return res
 
 class SpringData(DataObject):
-    def __init__(self, source):
-        DataObject.__init__(self, source=source)
+    def __init__(self, source, graph_based):
+        DataObject.__init__(self, source=source,
+                            graph_based="ClustersWT" if graph_based is None else graph_based)
         self.barcodes = None
         self.features = None
         self.raw_barcodes = None
@@ -667,12 +682,12 @@ def add_category_to_first(column, new_category):
     column = column.cat.reorder_categories(cat)
     return column
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned"):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
-        data_object = ScanpyData(source, raw_key)
+        data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
     elif input_format == "spring":
-        data_object = SpringData(source)
+        data_object = SpringData(source, graph_based=graph_based)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(root_name=study_id, output_name=output_name,
