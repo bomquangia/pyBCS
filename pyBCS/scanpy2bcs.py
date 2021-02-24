@@ -367,9 +367,9 @@ class ScanpyData(DataObject):
 
     def get_raw_matrix(self):
         try:
-            M = self.object.raw.X[:][:].tocsr()
+            return self.object.raw.X[:][:].tocsr()
         except:
-            M = self.object.layers[self.raw_key].tocsr()
+            return self.object.layers[self.raw_key].tocsr()
 
     def get_normalized_matrix(self):
         return self.object.X[:][:].tocsc()
