@@ -87,7 +87,6 @@ class DataObject(ABC):
         """
         pass
 
-    @abc.abstractclassmethod
     def get_raw_data(self):
         """Gets raw data
 
@@ -96,9 +95,11 @@ class DataObject(ABC):
             An array contains the raw barcode names
             An array contains the raw gene names
         """
-        pass
+        M = self.get_raw_matrix()
+        barcodes = self.get_raw_barcodes()
+        features = self.get_raw_features()
+        return M, barcodes, features
 
-    @abc.abstractclassmethod
     def get_normalized_data(self):
         """Gets the normalized data
 
@@ -107,7 +108,10 @@ class DataObject(ABC):
             An array contains the barcode names
             An array contains the gene names
         """
-        pass
+        M = self.get_normalized_matrix()
+        barcodes = self.get_barcodes()
+        features = self.get_features()
+        return M, barcodes, features
 
     @abc.abstractclassmethod
     def get_metadata(self):
@@ -522,18 +526,6 @@ class ScanpyData(DataObject):
     def get_normalized_matrix(self):
         return self.object.X[:][:].tocsc()
 
-    def get_raw_data(self):
-        M = self.get_raw_matrix()
-        barcodes = self.get_raw_barcodes()
-        features = self.get_raw_features()
-        return M, barcodes, features
-
-    def get_normalized_data(self):
-        M = self.get_normalized_matrix()
-        barcodes = self.get_barcodes()
-        features = self.get_features()
-        return M, barcodes, features
-
     def get_metadata(self):
         return self.object.obs
 
@@ -545,6 +537,91 @@ class ScanpyData(DataObject):
                 continue
             res[dimred] = self.object.obsm[dimred]
         return res
+
+class SpringData(DataObject):
+    def __init__(self, source):
+        DataObject.__init__(self, source=source)
+        self.barcodes = None
+        self.features = None
+        self.raw_barcodes = None
+        self.raw_features = None
+
+    def get_barcodes(self):
+        if self.barcodes is None:
+            try:
+                self.barcodes = np.load(os.path.join(self.source,
+                                                    "FullDataset_v1",
+                                                    "cell_filter.npy"))
+            except:
+                with open(os.path.join(self.source, "FullDataset_v1",
+                                        "cell_filter.txt"),
+                            "r") as f:
+                    lines = f.readlines()
+
+                self.barcodes = [x[0:-1] for x in lines]
+        return self.barcodes
+
+    def get_raw_barcodes(self):
+        if self.raw_barcodes is None:
+            self.raw_barcodes = self.get_barcodes()
+        return self.raw_barcodes
+
+    def get_features(self):
+        if self.features is None:
+            with open(os.path.join(self.source, "genes.txt"), "r") as f:
+                lines = f.readlines()
+            self.features = [x[0:-1] for x in lines]
+        return self.features
+
+    def get_raw_features(self):
+        if self.raw_features is None:
+            self.raw_features = self.get_features()
+        return self.raw_features
+
+    def get_raw_matrix(self):
+        with np.load(os.path.join(self.source, "counts_norm.npz"), "r") as f:
+            sparse_format = f["format"].astype("str")
+            if sparse_format == "csc":
+                return scipy.sparse.csc_matrix((f["data"], f["indices"], f["indptr"]),
+                                                shape=f["shape"])\
+                                    .tocsr()
+            elif sparse_format == "csr":
+                return scipy.sparse.csr_matrix((f["data"], f["indices"], f["indptr"]),
+                                                shape=f["shape"])
+            else:
+                raise Exception("Format %s is not supported" % sparse_format)
+
+    def get_normalized_matrix(self):
+        with np.load(os.path.join(self.source, "counts_norm.npz"), "r") as f:
+            sparse_format = f["format"].astype("str")
+            if sparse_format == "csc":
+                return scipy.sparse.csc_matrix((f["data"], f["indices"], f["indptr"]),
+                                                shape=f["shape"])
+            elif sparse_format == "csr":
+                return scipy.sparse.csr_matrix((f["data"], f["indices"], f["indptr"]),
+                                                shape=f["shape"])\
+                                    .tocsc()
+            else:
+                raise Exception("Format %s is not supported" % sparse_format)
+
+    def get_metadata(self):
+        with open(os.path.join(self.source, "FullDataset_v1",
+                                "categorical_coloring_data.json"),
+                    "r") as f:
+            obj = json.load(f)
+        for key in obj:
+            obj[key] = obj[key]["label_list"]
+        return pd.DataFrame.from_dict(obj)
+
+    def get_dimred(self):
+        df = pd.read_csv(os.path.join(self.source, "FullDataset_v1",
+                                        "coordinates.txt"),
+                            names=["index", "x", "y"],
+                            index_col="index")
+        df.index = df.index.map(str)
+        coordinates = df.loc[self.get_barcodes.astype("str"), :].to_numpy()
+        return {"coordinates" : coordinates}
+
 
 
 def generate_uuid(remove_hyphen=True):
@@ -603,6 +680,8 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts", repl
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key)
+    elif input_format == "spring":
+        data_object = SpringData(source)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(root_name=study_id, output_name=output_name,
