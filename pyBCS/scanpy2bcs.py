@@ -14,12 +14,8 @@ from abc import ABC, abstractmethod
 import abc
 
 class DataObject(ABC):
-    def __init__(self, source, root_name, output_name, replace_missing="Unassigned"):
+    def __init__(self, source):
         self.source = source
-        self.root_name = root_name
-        self.zobj = zipfile.ZipFile(output_name, "w")
-        self.output_name = output_name
-        self.replace_missing = replace_missing
 
     def get_n_cells(self):
         return len(self.get_barcodes())
@@ -92,7 +88,7 @@ class DataObject(ABC):
         return self.sync_data((norm_M, norm_barcodes, norm_features),
                                     (raw_M, raw_barcodes, raw_features))
 
-    def write_metadata(self):
+    def write_metadata(self, zobj, root_name, replace_missing="Unassigned"):
         print("Writing main/metadata/metalist.json")
         metadata = self.get_metadata()
         for metaname in metadata.columns:
@@ -115,10 +111,10 @@ class DataObject(ABC):
                 names = "NaN"
                 _type = "numeric"
             elif metaname in category_meta:
-                if self.replace_missing not in metadata[metaname].cat.categories:
+                if replace_missing not in metadata[metaname].cat.categories:
                     metadata[metaname] = add_category_to_first(metadata[metaname],
-                                                                new_category=self.replace_missing)
-                metadata[metaname].fillna(self.replace_missing, inplace=True)
+                                                                new_category=replace_missing)
+                metadata[metaname].fillna(replace_missing, inplace=True)
 
                 value_to_index = {}
                 for x, y in enumerate(metadata[metaname].cat.categories):
@@ -155,7 +151,7 @@ class DataObject(ABC):
             "type":"category",
             "history":[graph_based_history]
         }
-        with self.zobj.open(self.root_name + "/main/metadata/metalist.json", "w") as z:
+        with zobj.open(root_name + "/main/metadata/metalist.json", "w") as z:
             z.write(json.dumps({"content":content, "version":1}).encode("utf8"))
 
 
@@ -174,10 +170,10 @@ class DataObject(ABC):
                 "history":content[uid]["history"],
                 "type":[content[uid]["type"]]
             }
-            with self.zobj.open(self.root_name + ("/main/metadata/%s.json" % uid), "w") as z:
+            with zobj.open(root_name + ("/main/metadata/%s.json" % uid), "w") as z:
                 z.write(json.dumps(obj).encode("utf8"))
 
-    def write_dimred(self):
+    def write_dimred(self, zobj, root_name):
         print("Writing dimred")
         data = {}
         default_dimred = None
@@ -211,7 +207,7 @@ class DataObject(ABC):
                 "param":coords["param"],
                 "history":coords["history"]
             }
-            with self.zobj.open(self.root_name + "/main/dimred/" + coords["id"], "w") as z:
+            with zobj.open(root_name + "/main/dimred/" + coords["id"], "w") as z:
                 z.write(json.dumps(coords).encode("utf8"))
         meta = {
             "data":data,
@@ -221,10 +217,10 @@ class DataObject(ABC):
             "description":"Created by converting scanpy to bbrowser format"
         }
         print("Writing main/dimred/meta", flush=True)
-        with self.zobj.open(self.root_name + "/main/dimred/meta", "w") as z:
+        with zobj.open(root_name + "/main/dimred/meta", "w") as z:
             z.write(json.dumps(meta).encode("utf8"))
 
-    def write_matrix(self, dest_hdf5):
+    def write_matrix(self, zobj, dest_hdf5):
         #TODO: Reduce memory usage
         norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
 
@@ -288,37 +284,37 @@ class DataObject(ABC):
             colsum_group.create_dataset("raw", data=sum_raw)
         return barcodes, features, has_raw
 
-    def write_main_folder(self):
+    def write_main_folder(self, zobj, root_name):
         print("Writing main/matrix.hdf5", flush=True)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
-            barcodes, features, has_raw = self.write_matrix(dest_hdf5)
+            barcodes, features, has_raw = self.write_matrix(zobj, dest_hdf5)
         print("Writing to zip", flush=True)
-        self.zobj.write(tmp_matrix, self.root_name + "/main/matrix.hdf5")
+        zobj.write(tmp_matrix, root_name + "/main/matrix.hdf5")
         os.remove(tmp_matrix)
 
         print("Writing main/barcodes.tsv", flush=True)
-        with self.zobj.open(self.root_name + "/main/barcodes.tsv", "w") as z:
+        with zobj.open(root_name + "/main/barcodes.tsv", "w") as z:
             z.write("\n".join(barcodes).encode("utf8"))
 
         print("Writing main/genes.tsv", flush=True)
-        with self.zobj.open(self.root_name + "/main/genes.tsv", "w") as z:
+        with zobj.open(root_name + "/main/genes.tsv", "w") as z:
             z.write("\n".join(features).encode("utf8"))
 
         print("Writing main/gene_gallery.json", flush=True)
         obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
-        with self.zobj.open(self.root_name + "/main/gene_gallery.json", "w") as z:
+        with zobj.open(root_name + "/main/gene_gallery.json", "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
         return has_raw
 
-    def write_runinfo(self, unit):
+    def write_runinfo(self, zobj, root_name, unit):
         print("Writing run_info.json", flush=True)
         runinfo_history = generate_history_object()
-        runinfo_history["hash_id"] = self.root_name
+        runinfo_history["hash_id"] = root_name
         date = time.time() * 1000
         run_info = {
             "species":"human",
-            "hash_id":self.root_name,
+            "hash_id":root_name,
             "version":16,
             "n_cell":self.get_n_cells(),
             "modified_date":date,
@@ -332,21 +328,22 @@ class DataObject(ABC):
             "history":[runinfo_history],
             "unit":unit
         }
-        with self.zobj.open(self.root_name + "/run_info.json", "w") as z:
+        with zobj.open(root_name + "/run_info.json", "w") as z:
             z.write(json.dumps(run_info).encode("utf8"))
 
-    def write_bcs(self):
-        self.write_metadata()
-        self.write_dimred()
-        has_raw = self.write_main_folder()
+    def write_bcs(self, root_name, output_name, replace_missing="Unassigned"):
+        zobj = zipfile.ZipFile(output_name, "w")
+        self.write_metadata(zobj, root_name, replace_missing)
+        self.write_dimred(zobj, root_name)
+        has_raw = self.write_main_folder(zobj, root_name)
         unit = "umi" if has_raw else "lognorm"
-        self.write_runinfo(unit)
-        return self.output_name
+        self.write_runinfo(zobj, root_name, unit)
+        zobj.close()
+        return output_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, root_name, output_name, raw_key="counts"):
-        DataObject.__init__(self, source=source, root_name=root_name,
-                            output_name=output_name)
+    def __init__(self, source, raw_key="counts"):
+        DataObject.__init__(self, source=source)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
 
@@ -920,10 +917,11 @@ def add_category_to_first(column, new_category):
 #
 #    return output_name
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts"):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned"):
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
-        data_object = ScanpyData(source, study_id, output_name, raw_key)
+        data_object = ScanpyData(source, raw_key)
     else:
         raise Exception("Invalid input format: %s" % input_format)
-    return data_object.write_bcs()
+    return data_object.write_bcs(root_name=study_id, output_name=output_name,
+                                    replace_missing=replace_missing)
