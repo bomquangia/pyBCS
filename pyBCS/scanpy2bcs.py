@@ -571,7 +571,7 @@ class SpringData(DataObject):
         if self.features is None:
             with open(os.path.join(self.source, "genes.txt"), "r") as f:
                 lines = f.readlines()
-            self.features = [x[0:-1] for x in lines]
+            self.features = [x[0:-1].rsplit("_", 1)[1] for x in lines]
         return self.features
 
     def get_raw_features(self):
