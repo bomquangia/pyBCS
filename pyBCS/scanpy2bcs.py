@@ -15,52 +15,132 @@ import abc
 
 class DataObject(ABC):
     def __init__(self, source):
+        """Constructor of DataObject class
+
+        Keyword arguments:
+            source: Path to input file or folder
+
+        Returns:
+            None
+        """
         self.source = source
 
     def get_n_cells(self):
+        """Gets the number of cells
+
+        Returns:
+            The number of cells of the data
+        """
         return len(self.get_barcodes())
 
     @abc.abstractclassmethod
     def get_barcodes(self):
+        """Gets barcode names
+
+        Returns:
+            An array contains the barcode names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_raw_barcodes(self):
+        """Gets the raw barcode names
+
+        Returns:
+            An array contains the raw barcode names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_features(self):
+        """Gets the gene names
+
+        Returns:
+            An array contains the gene names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_raw_features(self):
+        """Get the raw gene names
+
+        Returns:
+            An array contains the raw gene names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_raw_matrix(self):
+        """Gets the raw matrix
+
+        Returns:
+            A scipy.sparse.csr_matrix of shape (cells x genes) contains the matrix
+        """
         pass
 
     @abc.abstractclassmethod
     def get_normalized_matrix(self):
+        """Gets the normalized matrix
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the normalized matrix
+        """
         pass
 
     @abc.abstractclassmethod
     def get_raw_data(self):
+        """Gets raw data
+
+        Returns:
+            A scipy.sparse.csr_matrix of shape (cells x genes) contains the matrix
+            An array contains the raw barcode names
+            An array contains the raw gene names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_normalized_data(self):
+        """Gets the normalized data
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the normalized matrix
+            An array contains the barcode names
+            An array contains the gene names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_metadata(self):
+        """Gets metadata
+
+        Returns:
+            A pandas.DataFrame contains the metadata
+        """
         pass
 
     @abc.abstractclassmethod
     def get_dimred(self):
+        """Gets dimentional reduction data
+
+        Returns:
+            A dictionary whose each value is a numpy.ndarray contains the dimentional reduced data
+        """
         pass
 
     def sync_data(self, norm, raw):
+        """Synces normalized and raw data
+
+        Keyword arguments:
+            norm: A tuple contains normalized data, which is the output of DataObject.get_normalized_data
+            raw: A tuple contains raw data, which is the output of DataObject.get_raw_data
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
+            A scipy.sparse.csr_matrix of shape (cells x genes) contains the synced raw matrix
+            An array contains the synced barcode names
+            An array contains the synced gene names
+            A boolean value indicates that if raw data is available
+        """
         norm_M, norm_barcodes, norm_features = norm
         raw_M, raw_barcodes, raw_features = raw
         has_raw = True
@@ -79,6 +159,15 @@ class DataObject(ABC):
         return norm_M, raw_M, barcodes, features, has_raw
 
     def get_synced_data(self):
+        """Gets synced version of normalized and raw data
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
+            A scipy.sparse.csr_matrix of shape (cells x genes) contains the synced raw matrix
+            An array contains the synced barcode names
+            An array contains the synced gene names
+            A boolean value indicates that if raw data is available
+        """
         norm_M, norm_barcodes, norm_features = self.get_normalized_data()
         try:
             raw_M, raw_barcodes, raw_features = self.get_raw_data()
@@ -89,6 +178,16 @@ class DataObject(ABC):
                                     (raw_M, raw_barcodes, raw_features))
 
     def write_metadata(self, zobj, root_name, replace_missing="Unassigned"):
+        """Writes metadata to zip file
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            root_name: Name of the root directory that contains the whole study in the zip file
+            replace_missing: A string indicates what missing values in metadata should be named
+
+        Returns:
+            None
+        """
         print("Writing main/metadata/metalist.json")
         metadata = self.get_metadata()
         for metaname in metadata.columns:
@@ -174,6 +273,15 @@ class DataObject(ABC):
                 z.write(json.dumps(obj).encode("utf8"))
 
     def write_dimred(self, zobj, root_name):
+        """Writes dimred data to the zip file
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            root_name: Name of the root directory that contains the whole study in the zip file
+
+        Returns:
+            None
+        """
         print("Writing dimred")
         data = {}
         default_dimred = None
@@ -221,6 +329,17 @@ class DataObject(ABC):
             z.write(json.dumps(meta).encode("utf8"))
 
     def write_matrix(self, zobj, dest_hdf5):
+        """Writes expression data to the zip file
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            dest_hdf5: An opened-for-write hdf5 file where the expression should be written to
+
+        Returns:
+            An array that contains the barcode names that are actually written to the hdf5 file
+            An array that contains the gene names that are actually written to the hdf5 file
+            A boolean indicates that if raw data is available
+        """
         #TODO: Reduce memory usage
         norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
 
@@ -285,6 +404,15 @@ class DataObject(ABC):
         return barcodes, features, has_raw
 
     def write_main_folder(self, zobj, root_name):
+        """Writes data to "main" folder
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            root_name: Name of the root directory that contains the whole study in the zip file
+
+        Returns:
+            A boolean indicates that if raw data is available
+        """
         print("Writing main/matrix.hdf5", flush=True)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
@@ -308,6 +436,16 @@ class DataObject(ABC):
         return has_raw
 
     def write_runinfo(self, zobj, root_name, unit):
+        """Writes run_info.json
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            root_name: Name of the root directory that contains the whole study in the zip file
+            unit: Unit of the study
+
+        Returns:
+            None
+        """
         print("Writing run_info.json", flush=True)
         runinfo_history = generate_history_object()
         runinfo_history["hash_id"] = root_name
@@ -332,6 +470,16 @@ class DataObject(ABC):
             z.write(json.dumps(run_info).encode("utf8"))
 
     def write_bcs(self, root_name, output_name, replace_missing="Unassigned"):
+        """Writes data to bcs file
+
+        Keyword arguments:
+            root_name: Name of the root directory that contains the whole study in the zip file
+            output_name: Relative path to output file
+            replace_missing: A string indicates what missing values in metadata should be named
+
+        Returns:
+            Relative path to output file
+        """
         zobj = zipfile.ZipFile(output_name, "w")
         self.write_metadata(zobj, root_name, replace_missing)
         self.write_dimred(zobj, root_name)
