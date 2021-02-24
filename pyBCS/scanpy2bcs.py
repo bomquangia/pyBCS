@@ -383,7 +383,7 @@ class ScanpyData(DataObject):
     def get_normalized_data(self):
         M = self.get_normalized_matrix()
         barcodes = self.get_barcodes()
-        features = self.get_featuers()
+        features = self.get_features()
         return M, barcodes, features
 
     def get_metadata(self):
