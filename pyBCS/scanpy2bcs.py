@@ -563,9 +563,7 @@ class SpringData(DataObject):
         return self.barcodes
 
     def get_raw_barcodes(self):
-        if self.raw_barcodes is None:
-            self.raw_barcodes = self.get_barcodes()
-        return self.raw_barcodes
+        return None
 
     def get_features(self):
         if self.features is None:
@@ -575,22 +573,10 @@ class SpringData(DataObject):
         return self.features
 
     def get_raw_features(self):
-        if self.raw_features is None:
-            self.raw_features = self.get_features()
-        return self.raw_features
+        return None
 
     def get_raw_matrix(self):
-        with np.load(os.path.join(self.source, "counts_norm.npz"), "r") as f:
-            sparse_format = f["format"].astype("str")
-            if sparse_format == "csc":
-                return scipy.sparse.csc_matrix((f["data"], f["indices"], f["indptr"]),
-                                                shape=f["shape"])\
-                                    .tocsr()
-            elif sparse_format == "csr":
-                return scipy.sparse.csr_matrix((f["data"], f["indices"], f["indptr"]),
-                                                shape=f["shape"])
-            else:
-                raise Exception("Format %s is not supported" % sparse_format)
+        return None
 
     def get_normalized_matrix(self):
         with np.load(os.path.join(self.source, "counts_norm.npz"), "r") as f:
