@@ -552,6 +552,7 @@ class SpringData(DataObject):
                 self.barcodes = np.load(os.path.join(self.source,
                                                     "FullDataset_v1",
                                                     "cell_filter.npy"))
+                self.barcodes = [str(x) for x in self.barcodes]
             except:
                 with open(os.path.join(self.source, "FullDataset_v1",
                                         "cell_filter.txt"),
@@ -613,13 +614,14 @@ class SpringData(DataObject):
             obj[key] = obj[key]["label_list"]
         return pd.DataFrame.from_dict(obj)
 
+
     def get_dimred(self):
         df = pd.read_csv(os.path.join(self.source, "FullDataset_v1",
                                         "coordinates.txt"),
                             names=["index", "x", "y"],
                             index_col="index")
         df.index = df.index.map(str)
-        coordinates = df.loc[self.get_barcodes.astype("str"), :].to_numpy()
+        coordinates = df.loc[self.get_barcodes(), :].to_numpy()
         return {"coordinates" : coordinates}
 
 
