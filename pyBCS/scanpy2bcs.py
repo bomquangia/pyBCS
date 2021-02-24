@@ -16,12 +16,6 @@ class DataObject(ABC):
     def __init__(self, source):
         pass
 
-    def get_normalized_data(self):
-        pass
-
-    def get_raw_data(self):
-        pass
-
     def get_barcodes(self):
         pass
 
@@ -34,11 +28,69 @@ class DataObject(ABC):
     def get_raw_features(self):
         pass
 
+    def get_raw_data(self):
+        pass
+
+    def get_normalized_data(self):
+        pass
+
     def get_metadata(self):
         pass
 
     def get_dimred(self):
         pass
+
+class ScanpyData(DataObject):
+    def __init__(self, source, raw_key="counts"):
+        self.object = scanpy.read_h5ad(source, "r")
+        self.raw_key = raw_key
+
+    def get_barcodes(self):
+        return self.object.obs_names
+
+    def get_features(self):
+        return self.object.var_names
+
+    def get_raw_barcodes(self):
+        return self.get_barcodes()
+
+    def get_raw_features(self):
+        try:
+            return self.object.raw.var.index
+        except:
+            return self.get_features()
+
+    def get_raw_matrix(self):
+        try:
+            M = self.object.raw.X[:][:].tocsr()
+        except:
+            M = self.object.layers[self.raw_key].tocsr()
+
+
+    def get_raw_data(self):
+        M = self.get_raw_matrix()
+        barcodes = self.get_raw_barcodes()
+        features = self.get_raw_features()
+        return M, barcodes, features
+
+    def get_normalized_data(self):
+        M = self.object.X[:][:].tocsc()
+        barcodes = self.get_barcodes()
+        features = self.get_featuers()
+        return M, barcodes, features
+
+    def get_metadata(self):
+        return self.object.obs
+
+    def get_dimred(self):
+        res = {}
+        for dimred in self.object.obsm:
+            if isinstance(self.object.obsm[dimred], np.ndarray) == False:
+                print("%s is not a numpy.ndarray, ignoring" % dimred)
+                continue
+            res[dimred] = self.object.obsm[dimred]
+        return res
+
 
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
