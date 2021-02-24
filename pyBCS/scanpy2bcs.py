@@ -19,6 +19,7 @@ class DataObject(ABC):
 
         Keyword arguments:
             source: Path to input file or folder
+            graph_based: Name of metadata that is the result of clustering process
 
         Returns:
             None
@@ -494,11 +495,11 @@ class DataObject(ABC):
 
         Keyword arguments:
             root_name: Name of the root directory that contains the whole study in the zip file
-            output_name: Relative path to output file
+            output_name: Path to output file
             replace_missing: A string indicates what missing values in metadata should be named
 
         Returns:
-            Relative path to output file
+            Path to output file
         """
         zobj = zipfile.ZipFile(output_name, "w")
         self.write_metadata(zobj, root_name, replace_missing)
@@ -511,6 +512,13 @@ class DataObject(ABC):
 
 class ScanpyData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts"):
+        """Constructor of ScanpyData object
+
+        Keyword arguments:
+            source: Path to input file or folder
+            graph_based: Name of metadata that is the result of clustering process
+            raw_key: Where to look for raw data in AnnData.layers
+        """
         DataObject.__init__(self, source=source,
                             graph_based="louvain" if graph_based is None else graph_based)
         self.object = scanpy.read_h5ad(source, "r")
@@ -554,6 +562,12 @@ class ScanpyData(DataObject):
 
 class SpringData(DataObject):
     def __init__(self, source, graph_based):
+        """Constructor of SpringData object
+
+        Keyword arguments:
+            source: Path to input file or folder
+            graph_based: Name of metadata that is the result of clustering process
+        """
         DataObject.__init__(self, source=source,
                             graph_based="ClustersWT" if graph_based is None else graph_based)
         self.barcodes = None
@@ -683,6 +697,24 @@ def add_category_to_first(column, new_category):
     return column
 
 def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
+    """Converts data to bcs format
+
+    Keyword arguments:
+        source: Path to input file or folder
+        output_name: Path to output file
+        input_format: Format of input file, must be either "h5ad" or "spring"
+        raw_keys: If input_format is "h5ad", raw_keys specifies where to look for raw data in AnnData.layers.
+                    If raw data is stored in AnnData.raw instead, this parameter is ignored.
+        replace_missing: A string indicates what missing values in metadata should be named
+        graph_based: A string that indicates the name of the metadata that is the result of clustering process.
+                        If None is given, the program looks for "louvain" when input format is "h5ad"
+                            or "ClustersWT" when input format is "spring".
+                        If graph_based is not in the metadata, a dummy graph based is generated where all cells
+                            belong to "Cluster 1".
+
+    Returns:
+        Path to output file
+    """
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
