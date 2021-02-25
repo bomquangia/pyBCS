@@ -352,21 +352,7 @@ class DataObject(ABC):
         dimred_data = self.get_dimred()
         self.write_dimred_to_file(zobj, root_name, dimred_data)
 
-    def write_matrix(self, dest_hdf5):
-        """Writes expression data to the zip file
-
-        Keyword arguments:
-            zobj: The opened-for-write zip file
-            dest_hdf5: An opened-for-write hdf5 file where the expression should be written to
-
-        Returns:
-            An array that contains the barcode names that are actually written to the hdf5 file
-            An array that contains the gene names that are actually written to the hdf5 file
-            A boolean indicates that if raw data is available
-        """
-        #TODO: Reduce memory usage
-        norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
-
+    def write_matrix_to_hdf5(self, dest_hdf5, norm_M, raw_M, barcodes, features, has_raw):
         print("Writing group \"bioturing\"")
         bioturing_group = dest_hdf5.create_group("bioturing")
         bioturing_group.create_dataset("barcodes",
@@ -425,7 +411,24 @@ class DataObject(ABC):
         if has_raw:
             colsum_group.create_dataset("log", data=sum_log)
             colsum_group.create_dataset("raw", data=sum_raw)
+
+    def write_matrix(self, dest_hdf5):
+        """Writes expression data to the zip file
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            dest_hdf5: An opened-for-write hdf5 file where the expression should be written to
+
+        Returns:
+            An array that contains the barcode names that are actually written to the hdf5 file
+            An array that contains the gene names that are actually written to the hdf5 file
+            A boolean indicates that if raw data is available
+        """
+        #TODO: Reduce memory usage
+        norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
+        self.write_matrix_to_hdf5(dest_hdf5, norm_M, raw_M, barcodes, features, has_raw)
         return barcodes, features, has_raw
+
 
 
     def write_main_folder_to_file(self, zobj, root_name, matrix, barcodes, features):
@@ -573,31 +576,45 @@ class SubclusterData(DataObject):
         pass
 
     @abc.abstractclassmethod
-    def get_sub_matrix(self, sub_name):
+    def get_sub_raw_barcodes(self, sub_name):
         pass
 
-    def get_sub_data(self, sub_name):
-        M = self.get_sub_matrix(sub_name)
+    @abc.abstractclassmethod
+    def get_sub_raw_matrix(self, sub_name):
+        pass
+
+    @abc.abstractclassmethod
+    def get_sub_normalized_matrix(self, sub_name):
+        pass
+
+    def get_sub_normalized_data(self, sub_name):
+        M = self.get_sub_normalized_matrix(sub_name)
         barcodes = self.get_sub_barcodes(sub_name)
         features = self.get_features()
         return M, barcodes, features
 
-    def write_sub_folder(self, root_name, sub_name):
+    def get_sub_raw_data(self, sub_name):
+        M = self.get_sub_raw_matrix(sub_name)
+        barcodes = self.get_sub_raw_barcodes(sub_name)
+        features = self.get_features()
+        return M, barcodes, features
+
+    def write_sub_folder(self, zobj, root_name, sub_name):
         print("Writing sub/%s/matrix.hdf5" % sub_name)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
             barcodes, features, has_raw = self.write_sub_matrix(sub_name,
                                                                 dest_hdf5)
-        self.write_main_folder_to_file(zobj, root_name, tmp_matrix, barcodes,
-                                        features)
+        self.write_main_folder_to_file(zobj, os.path.join(root_name, "sub", sub_name),
+                                        tmp_matrix, barcodes, features)
         os.remove(tmp_matrix)
         return has_raw
 
-
     def write_sub_matrix(self, sub_name, dest_hdf5):
         norm_M, raw_M, barcodes, features, has_raw = self.get_sub_synced_data(sub_name)
-        self.write_matrix_to_hdf5(norm_M, raw_M, barcodes, features, has_raw,
-                                    dest_hdf5)
+        self.write_matrix_to_hdf5(dest_hdf5, norm_M, raw_M, barcodes, features,
+                                    has_raw)
+        return barcodes, features, has_raw
 
     def get_sub_synced_data(self, sub_name):
         #TODO should not read from file everytime
@@ -605,6 +622,7 @@ class SubclusterData(DataObject):
         ids = self.get_sub_cell_indexes(sub_name)
         return norm_M[ids, :], raw_M[ids, :], barcodes[ids], features, has_raw
 
+    @abc.abstractclassmethod
     def get_sub_dimred(self, sub_name):
         pass
 
@@ -613,9 +631,6 @@ class SubclusterData(DataObject):
         dimred = self.get_sub_dimred(sub_name)
         self.write_dimred_to_file(zobj, os.path.join(root_name, "sub", sub_name),
                                     dimred)
-
-    def write_sub_run_info(self, sub_name):
-        pass
 
     @abc.abstractclassmethod
     def get_sub_cluster_names(self):
@@ -651,7 +666,8 @@ class SubclusterData(DataObject):
             id_list.append(cluster_id)
             self.write_sub_dimred(zobj, root_name, cluster_id)
             self.write_sub_folder(zobj, root_name, cluster_id)
-            self.write_cluster_info(zobj, root_name, cluster_id, cell_indexes)
+            tmp = [int(x) for x in cell_indexes]
+            self.write_cluster_info(zobj, root_name, cluster_id, tmp)
         with zobj.open(os.path.join(root_name, "sub", "graph_cluster.json"), "w") as z:
             z.write(json.dumps({"main":id_list}).encode("utf8"))
 
@@ -666,8 +682,8 @@ class SubclusterData(DataObject):
         zobj.close()
         return output_name
 
-class SpringData(DataObject):
-    def __init__(self, source, graph_based):
+class SpringData(SubclusterData):
+    def __init__(self, source, graph_based, full_data):
         """Constructor of SpringData object
 
         Keyword arguments:
@@ -676,36 +692,19 @@ class SpringData(DataObject):
         """
         DataObject.__init__(self, source=source,
                             graph_based="ClustersWT" if graph_based is None else graph_based)
-        self.barcodes = None
-        self.features = None
-        self.raw_barcodes = None
-        self.raw_features = None
+        self.full_data = full_data
 
     def get_barcodes(self):
-        if self.barcodes is None:
-            try:
-                self.barcodes = np.load(os.path.join(self.source,
-                                                    "FullDataset_v1",
-                                                    "cell_filter.npy"))
-                self.barcodes = [str(x) for x in self.barcodes]
-            except:
-                with open(os.path.join(self.source, "FullDataset_v1",
-                                        "cell_filter.txt"),
-                            "r") as f:
-                    lines = f.readlines()
-
-                self.barcodes = [x[0:-1] for x in lines]
-        return self.barcodes
+        idx = self.get_sub_cell_indexes(self.full_data)
+        return np.array(idx).astype("str")
 
     def get_raw_barcodes(self):
         return None
 
     def get_features(self):
-        if self.features is None:
-            with open(os.path.join(self.source, "genes.txt"), "r") as f:
-                lines = f.readlines()
-            self.features = [x[0:-1].rsplit("_", 1)[1] for x in lines]
-        return self.features
+        with open(os.path.join(self.source, "genes.txt"), "r") as f:
+            lines = f.readlines()
+        return [x[0:-1].rsplit("_", 1)[0] for x in lines]
 
     def get_raw_features(self):
         return None
@@ -727,7 +726,7 @@ class SpringData(DataObject):
                 raise Exception("Format %s is not supported" % sparse_format)
 
     def get_metadata(self):
-        with open(os.path.join(self.source, "FullDataset_v1",
+        with open(os.path.join(self.source, self.full_data,
                                 "categorical_coloring_data.json"),
                     "r") as f:
             obj = json.load(f)
@@ -740,15 +739,51 @@ class SpringData(DataObject):
         return metadata
 
     def get_dimred(self):
-        df = pd.read_csv(os.path.join(self.source, "FullDataset_v1",
-                                        "coordinates.txt"),
+        return self.get_sub_dimred(self.full_data)
+
+    def get_sub_barcodes(self, sub_name):
+        ids = self.get_sub_cell_indexes(sub_name)
+        return np.array(self.get_barcodes())[ids]
+
+    def get_sub_raw_barcodes(self, sub_name):
+        ids = self.get_sub_cell_indexes(sub_name)
+        return np.array(self.get_raw_barcodes())[ids]
+
+    def get_sub_normalized_matrix(self, sub_name):
+        ids = self.get_sub_cell_indexes(sub_name)
+        return self.get_normalized_matrix()[ids, :]
+
+    def get_sub_raw_matrix(self, sub_name):
+        ids = self.get_sub_cell_indexes(sub_name)
+        return self.get_raw_matrix()[ids, :]
+
+    def get_sub_cluster_names(self):
+        dirs = os.listdir(self.source)
+        res = []
+        for d in dirs:
+            if os.path.isdir(os.path.join(self.source, d)):
+                x = os.path.join(self.source, d, "run_info.json")
+                if os.path.exists(x):
+                    res.append(d)
+        return res
+
+    def get_sub_cell_indexes(self, sub_name):
+        try:
+            idx = np.load(os.path.join(self.source, sub_name, "cell_filter.npy"))
+        except:
+            with open(os.path.join(self.source, sub_name, "cell_filter.txt"),
+                        "r") as f:
+                lines = f.readlines()
+            idx = np.array([int(x[0:-1]) for x in lines])
+        return idx
+
+    def get_sub_dimred(self, sub_name):
+        df = pd.read_csv(os.path.join(self.source, sub_name, "coordinates.txt"),
                             names=["index", "x", "y"],
                             index_col="index")
         df.index = df.index.map(str)
         coordinates = df.loc[self.get_barcodes(), :].to_numpy()
         return {"coordinates" : coordinates}
-
-
 
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
@@ -802,7 +837,7 @@ def add_category_to_first(column, new_category):
     column = column.cat.reorder_categories(cat)
     return column
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None, full_data=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -825,7 +860,7 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts", repl
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
     elif input_format == "spring":
-        data_object = SpringData(source, graph_based=graph_based)
+        data_object = SpringData(source, graph_based=graph_based, full_data=full_data)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(root_name=study_id, output_name=output_name,
