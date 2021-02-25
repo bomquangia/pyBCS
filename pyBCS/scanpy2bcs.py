@@ -293,20 +293,9 @@ class DataObject(ABC):
             with zobj.open(root_name + ("/main/metadata/%s.json" % uid), "w") as z:
                 z.write(json.dumps(obj).encode("utf8"))
 
-    def write_dimred(self, zobj, root_name):
-        """Writes dimred data to the zip file
-
-        Keyword arguments:
-            zobj: The opened-for-write zip file
-            root_name: Name of the root directory that contains the whole study in the zip file
-
-        Returns:
-            None
-        """
-        print("Writing dimred")
+    def write_dimred_to_file(self, zobj, root_name, dimred_data):
         data = {}
         default_dimred = None
-        dimred_data = self.get_dimred()
         if len(dimred_data.keys()) == 0:
             raise Exception("No dimred data found")
         for dimred in dimred_data:
@@ -348,6 +337,20 @@ class DataObject(ABC):
         print("Writing main/dimred/meta", flush=True)
         with zobj.open(root_name + "/dimred/meta", "w") as z:
             z.write(json.dumps(meta).encode("utf8"))
+
+    def write_dimred(self, zobj, root_name):
+        """Writes dimred data to the zip file
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            root_name: Name of the root directory that contains the whole study in the zip file
+
+        Returns:
+            None
+        """
+        print("Writing dimred")
+        dimred_data = self.get_dimred()
+        self.write_dimred_to_file(zobj, root_name, dimred_data)
 
     def write_matrix(self, dest_hdf5):
         """Writes expression data to the zip file
@@ -424,6 +427,24 @@ class DataObject(ABC):
             colsum_group.create_dataset("raw", data=sum_raw)
         return barcodes, features, has_raw
 
+
+    def write_main_folder_to_file(self, zobj, root_name, matrix, barcodes, features):
+        print("Writing to zip", flush=True)
+        zobj.write(matrix, root_name + "/matrix.hdf5")
+
+        print("Writing main/barcodes.tsv", flush=True)
+        with zobj.open(root_name + "/barcodes.tsv", "w") as z:
+            z.write("\n".join(barcodes).encode("utf8"))
+
+        print("Writing main/genes.tsv", flush=True)
+        with zobj.open(root_name + "/genes.tsv", "w") as z:
+            z.write("\n".join(features).encode("utf8"))
+
+        print("Writing main/gene_gallery.json", flush=True)
+        obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
+        with zobj.open(root_name + "/gene_gallery.json", "w") as z:
+            z.write(json.dumps(obj).encode("utf8"))
+
     def write_main_folder(self, zobj, root_name):
         """Writes data to "main" folder
 
@@ -438,22 +459,8 @@ class DataObject(ABC):
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
             barcodes, features, has_raw = self.write_matrix(dest_hdf5)
-        print("Writing to zip", flush=True)
-        zobj.write(tmp_matrix, root_name + "/matrix.hdf5")
+        self.write_main_folder_to_file(zobj, root_name, tmp_matrix, barcodes, features)
         os.remove(tmp_matrix)
-
-        print("Writing main/barcodes.tsv", flush=True)
-        with zobj.open(root_name + "/barcodes.tsv", "w") as z:
-            z.write("\n".join(barcodes).encode("utf8"))
-
-        print("Writing main/genes.tsv", flush=True)
-        with zobj.open(root_name + "/genes.tsv", "w") as z:
-            z.write("\n".join(features).encode("utf8"))
-
-        print("Writing main/gene_gallery.json", flush=True)
-        obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
-        with zobj.open(root_name + "/gene_gallery.json", "w") as z:
-            z.write(json.dumps(obj).encode("utf8"))
         return has_raw
 
     def write_runinfo(self, zobj, root_name, unit):
@@ -559,6 +566,105 @@ class ScanpyData(DataObject):
                 continue
             res[dimred] = self.object.obsm[dimred]
         return res
+
+class SubclusterData(DataObject):
+    @abc.abstractclassmethod
+    def get_sub_barcodes(self, sub_name):
+        pass
+
+    @abc.abstractclassmethod
+    def get_sub_matrix(self, sub_name):
+        pass
+
+    def get_sub_data(self, sub_name):
+        M = self.get_sub_matrix(sub_name)
+        barcodes = self.get_sub_barcodes(sub_name)
+        features = self.get_features()
+        return M, barcodes, features
+
+    def write_sub_folder(self, root_name, sub_name):
+        print("Writing sub/%s/matrix.hdf5" % sub_name)
+        tmp_matrix = "." + str(uuid.uuid4())
+        with h5py.File(tmp_matrix, "w") as dest_hdf5:
+            barcodes, features, has_raw = self.write_sub_matrix(sub_name,
+                                                                dest_hdf5)
+        self.write_main_folder_to_file(zobj, root_name, tmp_matrix, barcodes,
+                                        features)
+        os.remove(tmp_matrix)
+        return has_raw
+
+
+    def write_sub_matrix(self, sub_name, dest_hdf5):
+        norm_M, raw_M, barcodes, features, has_raw = self.get_sub_synced_data(sub_name)
+        self.write_matrix_to_hdf5(norm_M, raw_M, barcodes, features, has_raw,
+                                    dest_hdf5)
+
+    def get_sub_synced_data(self, sub_name):
+        #TODO should not read from file everytime
+        norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
+        ids = self.get_sub_cell_indexes(sub_name)
+        return norm_M[ids, :], raw_M[ids, :], barcodes[ids], features, has_raw
+
+    def get_sub_dimred(self, sub_name):
+        pass
+
+    def write_sub_dimred(self, zobj, root_name, sub_name):
+        print("Writing dimred of subcluster %s" % sub_name)
+        dimred = self.get_sub_dimred(sub_name)
+        self.write_dimred_to_file(zobj, os.path.join(root_name, "sub", sub_name),
+                                    dimred)
+
+    def write_sub_run_info(self, sub_name):
+        pass
+
+    @abc.abstractclassmethod
+    def get_sub_cluster_names(self):
+        pass
+
+    @abc.abstractclassmethod
+    def get_sub_cell_indexes(self, sub_name):
+        pass
+
+    def write_cluster_info(self, zobj, root_name, sub_name, selected_arr):
+        obj = {
+                "name":sub_name,
+                "hash":sub_name,
+                "selectedArr":selected_arr,
+                #TODO Use a defined constant for this
+                "bbrowser_version":"2.7.10",
+                "created_at":time.time() * 1000,
+                "created_by":"bbrowser_format_converter",
+                "version":1,
+                "path":sub_name
+                }
+        with zobj.open(os.path.join(root_name, "sub", sub_name, "cluster_info.json"),
+                        "w") as z:
+            z.write(json.dumps(obj).encode("utf8"))
+
+    def write_sub_clusters(self, zobj, root_name):
+        sub_cluster_names = self.get_sub_cluster_names()
+        id_list = []
+        for cluster in sub_cluster_names:
+            cell_indexes = self.get_sub_cell_indexes(cluster)
+            #TODO Change this to hash in the future
+            cluster_id = cluster
+            id_list.append(cluster_id)
+            self.write_sub_dimred(zobj, root_name, cluster_id)
+            self.write_sub_folder(zobj, root_name, cluster_id)
+            self.write_cluster_info(zobj, root_name, cluster_id, cell_indexes)
+        with zobj.open(os.path.join(root_name, "sub", "graph_cluster.json"), "w") as z:
+            z.write(json.dumps({"main":id_list}).encode("utf8"))
+
+    def write_bcs(self, root_name, output_name, replace_missing="Unassigned"):
+        zobj = zipfile.ZipFile(output_name, "w")
+        self.write_metadata(zobj, root_name, replace_missing)
+        self.write_dimred(zobj, os.path.join(root_name, "main"))
+        has_raw = self.write_main_folder(zobj, os.path.join(root_name, "main"))
+        unit = "umi" if has_raw else "lognorm"
+        self.write_runinfo(zobj, root_name, unit)
+        self.write_sub_clusters(zobj, root_name)
+        zobj.close()
+        return output_name
 
 class SpringData(DataObject):
     def __init__(self, source, graph_based):
