@@ -336,7 +336,7 @@ class DataObject(ABC):
                 "param":coords["param"],
                 "history":coords["history"]
             }
-            with zobj.open(root_name + "/main/dimred/" + coords["id"], "w") as z:
+            with zobj.open(root_name + "/dimred/" + coords["id"], "w") as z:
                 z.write(json.dumps(coords).encode("utf8"))
         meta = {
             "data":data,
@@ -346,10 +346,10 @@ class DataObject(ABC):
             "description":"Created by converting scanpy to bbrowser format"
         }
         print("Writing main/dimred/meta", flush=True)
-        with zobj.open(root_name + "/main/dimred/meta", "w") as z:
+        with zobj.open(root_name + "/dimred/meta", "w") as z:
             z.write(json.dumps(meta).encode("utf8"))
 
-    def write_matrix(self, zobj, dest_hdf5):
+    def write_matrix(self, dest_hdf5):
         """Writes expression data to the zip file
 
         Keyword arguments:
@@ -437,22 +437,22 @@ class DataObject(ABC):
         print("Writing main/matrix.hdf5", flush=True)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
-            barcodes, features, has_raw = self.write_matrix(zobj, dest_hdf5)
+            barcodes, features, has_raw = self.write_matrix(dest_hdf5)
         print("Writing to zip", flush=True)
-        zobj.write(tmp_matrix, root_name + "/main/matrix.hdf5")
+        zobj.write(tmp_matrix, root_name + "/matrix.hdf5")
         os.remove(tmp_matrix)
 
         print("Writing main/barcodes.tsv", flush=True)
-        with zobj.open(root_name + "/main/barcodes.tsv", "w") as z:
+        with zobj.open(root_name + "/barcodes.tsv", "w") as z:
             z.write("\n".join(barcodes).encode("utf8"))
 
         print("Writing main/genes.tsv", flush=True)
-        with zobj.open(root_name + "/main/genes.tsv", "w") as z:
+        with zobj.open(root_name + "/genes.tsv", "w") as z:
             z.write("\n".join(features).encode("utf8"))
 
         print("Writing main/gene_gallery.json", flush=True)
         obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
-        with zobj.open(root_name + "/main/gene_gallery.json", "w") as z:
+        with zobj.open(root_name + "/gene_gallery.json", "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
         return has_raw
 
@@ -503,8 +503,8 @@ class DataObject(ABC):
         """
         zobj = zipfile.ZipFile(output_name, "w")
         self.write_metadata(zobj, root_name, replace_missing)
-        self.write_dimred(zobj, root_name)
-        has_raw = self.write_main_folder(zobj, root_name)
+        self.write_dimred(zobj, os.path.join(root_name, "main"))
+        has_raw = self.write_main_folder(zobj, os.path.join(root_name, "main"))
         unit = "umi" if has_raw else "lognorm"
         self.write_runinfo(zobj, root_name, unit)
         zobj.close()
