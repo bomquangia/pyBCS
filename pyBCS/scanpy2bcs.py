@@ -836,8 +836,8 @@ class SpringData(SubclusterData):
         df = pd.read_csv(os.path.join(self.source, sub_name, "coordinates.txt"),
                             names=["index", "x", "y"],
                             index_col="index")
-        df.index = df.index.map(str)
-        coordinates = df.loc[self.get_barcodes(), :].to_numpy()
+        ids = self.get_sub_cell_indexes(sub_name)
+        coordinates = df.loc[ids, :].to_numpy()
         return {"coordinates" : coordinates}
 
 def generate_uuid(remove_hyphen=True):
