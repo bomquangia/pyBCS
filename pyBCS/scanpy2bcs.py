@@ -12,6 +12,7 @@ import zipfile
 from pandas.api.types import is_numeric_dtype
 from abc import ABC, abstractmethod
 import abc
+BBROWSER_VERSION = "2.7.38"
 
 class DataObject(ABC):
     def __init__(self, source, graph_based):
@@ -330,7 +331,7 @@ class DataObject(ABC):
         meta = {
             "data":data,
             "version":1,
-            "bbrowser_version":"2.7.38",
+            "bbrowser_version":BBROWSER_VERSION,
             "default":default_dimred,
             "description":"Created by converting scanpy to bbrowser format"
         }
@@ -670,7 +671,7 @@ class SubclusterData(DataObject):
                 "hash":sub_name,
                 "selectedArr":selected_arr,
                 #TODO Use a defined constant for this
-                "bbrowser_version":"2.7.10",
+                "bbrowser_version":BBROWSER_VERSION,
                 "created_at":time.time() * 1000,
                 "created_by":"bbrowser_format_converter",
                 "version":1,
