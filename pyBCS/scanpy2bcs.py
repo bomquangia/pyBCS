@@ -712,7 +712,7 @@ class SubclusterData(DataObject):
         return os.path.join(study_name, "sub", sub_name)
 
 class SpringData(SubclusterData):
-    def __init__(self, source, graph_based, full_data):
+    def __init__(self, source, graph_based):
         """Constructor of SpringData object
 
         Keyword arguments:
@@ -721,10 +721,10 @@ class SpringData(SubclusterData):
         """
         DataObject.__init__(self, source=source,
                             graph_based="ClustersWT" if graph_based is None else graph_based)
-        self.full_data = full_data
 
     def get_barcodes(self):
-        idx = self.get_sub_cell_indexes(self.full_data)
+        full_data = self.get_full_data_names()[0]
+        idx = self.get_sub_cell_indexes(full_data)
         return np.array(idx).astype("str")
 
     def get_raw_barcodes(self):
@@ -755,7 +755,8 @@ class SpringData(SubclusterData):
                 raise Exception("Format %s is not supported" % sparse_format)
 
     def get_metadata(self):
-        with open(os.path.join(self.source, self.full_data,
+        full_data = self.get_full_data_names()[0]
+        with open(os.path.join(self.source, full_data,
                                 "categorical_coloring_data.json"),
                     "r") as f:
             obj = json.load(f)
@@ -768,7 +769,13 @@ class SpringData(SubclusterData):
         return metadata
 
     def get_dimred(self):
-        return self.get_sub_dimred(self.full_data)
+        full_data_names = self.get_full_data_names()
+        dimred = {}
+        for data_name in full_data_names:
+            d = self.get_sub_dimred(data_name)
+            #TODO: Avoid hard coding "coordinates"?
+            dimred[data_name] = d["coordinates"]
+        return dimred
 
     def get_sub_barcodes(self, sub_name):
         ids = self.get_sub_cell_indexes(sub_name)
@@ -786,7 +793,7 @@ class SpringData(SubclusterData):
         ids = self.get_sub_cell_indexes(sub_name)
         return self.get_raw_matrix()[ids, :]
 
-    def get_sub_cluster_names(self):
+    def get_sub_data_names(self):
         dirs = os.listdir(self.source)
         res = []
         for d in dirs:
@@ -795,6 +802,25 @@ class SpringData(SubclusterData):
                 if os.path.exists(x):
                     res.append(d)
         return res
+
+    def get_sub_cluster_names(self):
+        sub_data_names = self.get_sub_data_names()
+        res = []
+        for d in sub_data_names:
+            if self.is_full_data(d) == False:
+                res.append(d)
+        return res
+
+    def get_full_data_names(self):
+        sub_data_names = self.get_sub_data_names()
+        res = []
+        for d in sub_data_names:
+            if self.is_full_data(d):
+                res.append(d)
+        return res
+
+    def is_full_data(self, data_name):
+        return data_name.startswith("FullDataset_v1")
 
     def get_sub_cell_indexes(self, sub_name):
         try:
@@ -866,7 +892,7 @@ def add_category_to_first(column, new_category):
     column = column.cat.reorder_categories(cat)
     return column
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None, full_data=None):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -889,7 +915,7 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts", repl
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
     elif input_format == "spring":
-        data_object = SpringData(source, graph_based=graph_based, full_data=full_data)
+        data_object = SpringData(source, graph_based=graph_based)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(study_name=study_id, output_name=output_name,
