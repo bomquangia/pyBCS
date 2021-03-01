@@ -192,8 +192,8 @@ class DataObject(ABC):
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            root_name: Name of the root directory that contains the whole study in the zip file
-            replace_missing: A string indicates what missing values in metadata should be named
+            meta_path: Path where metadata will be written
+            replace_missing: A string indicates what missing values in metadata should be replaced with
 
         Returns:
             None
@@ -295,6 +295,13 @@ class DataObject(ABC):
                 z.write(json.dumps(obj).encode("utf8"))
 
     def write_dimred_to_file(self, zobj, dimred_path, dimred_data):
+        """Writes dimred data to the specified path in the given zip object
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            dimred_path: Path in the zip object where dimred data will be written
+            dimred_data: Dimred data that will be written
+        """
         data = {}
         default_dimred = None
         if len(dimred_data.keys()) == 0:
@@ -340,11 +347,11 @@ class DataObject(ABC):
             z.write(json.dumps(meta).encode("utf8"))
 
     def write_dimred(self, zobj, dimred_path):
-        """Writes dimred data to the zip file
+        """Writes dimred data to the given zip object
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            root_name: Name of the root directory that contains the whole study in the zip file
+            dimred_path: Path in the zip object where dimred data will be written
 
         Returns:
             None
@@ -355,6 +362,19 @@ class DataObject(ABC):
 
     def write_matrix_to_hdf5(self, dest_hdf5, norm_M, raw_M, barcodes, features,
                                 has_raw):
+        """Writes expression data to a hdf5 file
+
+        Keyword arguments:
+            dest_hdf5: The given hdf5 file where expression data will be written to
+            norm_M: A scipy.sparse.csc_matrix of shape (cells x genes) that stores the normalized expression data
+            raw_M: A scipy.sparse.csr_matrix of shape (cells x genes) that stores the raw expression data
+            barcodes: An array contains the barcodes
+            features: An array contains the gene names
+            has_raw: A boolean indicates that raw data is originally available or it is a copy of normalized data
+
+        Returns:
+            None
+        """
         print("Writing group \"bioturing\"")
         bioturing_group = dest_hdf5.create_group("bioturing")
         bioturing_group.create_dataset("barcodes",
@@ -435,6 +455,18 @@ class DataObject(ABC):
 
 
     def write_main_folder_to_file(self, zobj, main_path, matrix, barcodes, features):
+        """Writes main components of the main folder, given by the caller, to the zip object
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            main_path: Path to the main folder in the zip object where data will be written to
+            matrix: The expression data
+            barcodes: An array contains the barcodes
+            features: An array contains the gene names
+
+        Returns:
+            None
+        """
         print("Writing to zip", flush=True)
         zobj.write(matrix, os.path.join(main_path, "matrix.hdf5"))
 
@@ -455,7 +487,7 @@ class DataObject(ABC):
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            root_name: Name of the root directory that contains the whole study in the zip file
+            main_path: Path to the main folder in the zip object where data will be written to
 
         Returns:
             A boolean indicates that if raw data is available
@@ -474,7 +506,8 @@ class DataObject(ABC):
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            root_name: Name of the root directory that contains the whole study in the zip file
+            study_name: Name of the study
+            runinfo_path: Path in the zip object where run_info will be written to
             unit: Unit of the study
 
         Returns:
@@ -504,6 +537,16 @@ class DataObject(ABC):
             z.write(json.dumps(run_info).encode("utf8"))
 
     def write_bcs_to_file(self, zobj, study_name, replace_missing):
+        """Write data to a given zobj file as bcs format
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            study_name: Name of the study
+            replace_missing: A string indicates what missing values in metadata should be replaced with
+
+        Returns:
+            None
+        """
         self.write_metadata(zobj, meta_path=self.get_metadata_path(study_name),
                             replace_missing=replace_missing)
         self.write_dimred(zobj, dimred_path=self.get_dimred_path(study_name))
@@ -518,7 +561,7 @@ class DataObject(ABC):
         """Writes data to bcs file
 
         Keyword arguments:
-            root_name: Name of the root directory that contains the whole study in the zip file
+            study_name: Name of the study
             output_name: Path to output file
             replace_missing: A string indicates what missing values in metadata should be named
 
@@ -598,33 +641,95 @@ class ScanpyData(DataObject):
 class SubclusterData(DataObject):
     @abc.abstractclassmethod
     def get_sub_barcodes(self, sub_name):
+        """Gets barcodes of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: The name of the sub cluster
+
+        Returns:
+            An array contains the barcodes of the sub cluster
+        """
         pass
 
     @abc.abstractclassmethod
     def get_sub_raw_barcodes(self, sub_name):
+        """Gets raw barcodes of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: The name of the sub cluster
+
+        Returns:
+            An array contains the raw barcodes of the sub cluster
+        """
         pass
 
     @abc.abstractclassmethod
     def get_sub_raw_matrix(self, sub_name):
+        """Gets the raw expression matrix of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: The name of the sub cluster
+
+        Returns:
+            A scipy.sparse.csr_matrix of shape (sub cells x genes) contains the expression data
+        """
         pass
 
     @abc.abstractclassmethod
     def get_sub_normalized_matrix(self, sub_name):
+        """Gets the normalized expression matrix of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: The name of the sub cluster
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (sub cells x genes) contains the expression data
+        """
         pass
 
     def get_sub_normalized_data(self, sub_name):
+        """Gets the normalized data of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: Name of the sub cluster
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (sub cells x genes) contains the normalized matrix
+            An array contains the barcode names
+            An array contains the gene names
+        """
         M = self.get_sub_normalized_matrix(sub_name)
         barcodes = self.get_sub_barcodes(sub_name)
         features = self.get_features()
         return M, barcodes, features
 
     def get_sub_raw_data(self, sub_name):
+        """Gets the raw data of a sub cluster given its name
+
+        Keyword arguments:
+            sub_name: Name of the sub cluster
+
+        Returns:
+            A scipy.sparse.csr_matrix of shape (cells x genes) contains the matrix
+            An array contains the raw barcode names
+            An array contains the raw gene names
+        """
         M = self.get_sub_raw_matrix(sub_name)
         barcodes = self.get_sub_raw_barcodes(sub_name)
         features = self.get_features()
         return M, barcodes, features
 
     def write_sub_folder(self, zobj, sub_path, sub_name):
+        """Writes the sub folders data to a given zip object
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            sub_path: The path in the zip object where sub data will be written to
+            sub_name: Name of the sub cluster data
+
+        Returns:
+            has_raw: A boolean value indicates that if raw data is available
+        """
         print("Writing sub/%s/matrix.hdf5" % sub_name)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
@@ -636,12 +741,32 @@ class SubclusterData(DataObject):
         return has_raw
 
     def write_sub_matrix(self, sub_name, dest_hdf5):
+        """Writes sub expresion matrix to hdf5 file
+
+        Keyword arguments:
+            sub_name: Name of the sub cluster
+            dest_hdf5: The given hdf5 file where expression matrix will be written to
+
+        Returns:
+            An array that contains the barcode names that are actually written to the hdf5 file
+            An array that contains the gene names that are actually written to the hdf5 file
+            A boolean indicates that if raw data is available
+        """
         norm_M, raw_M, barcodes, features, has_raw = self.get_sub_synced_data(sub_name)
         self.write_matrix_to_hdf5(dest_hdf5, norm_M, raw_M, barcodes, features,
                                     has_raw)
         return barcodes, features, has_raw
 
     def get_sub_synced_data(self, sub_name):
+        """Gets synced version of normalized and raw data of a sub cluster
+
+        Returns:
+            A scipy.sparse.csc_matrix of shape (sub cells x genes) contains the synced normalized matrix
+            A scipy.sparse.csr_matrix of shape (sub cells x genes) contains the synced raw matrix
+            An array contains the synced barcode names
+            An array contains the synced gene names
+            A boolean value indicates that if raw data is available
+        """
         #TODO should not read from file everytime
         norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
         ids = self.get_sub_cell_indexes(sub_name)
@@ -649,9 +774,27 @@ class SubclusterData(DataObject):
 
     @abc.abstractclassmethod
     def get_sub_dimred(self, sub_name):
+        """Gets dimentional reduction data of a sub cluster
+
+        Keyword arguments:
+            sub_name: Name of the sub cluster
+
+        Returns:
+            A dictionary whose each value is a numpy.ndarray contains the dimentional reduced data
+        """
         pass
 
     def write_sub_dimred(self, zobj, sub_dimred_path, sub_name):
+        """Writes dimred data of a sub cluster to the given zip object under the given path
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            sub_dimred_path: Path in the zip object where dimred data will be written
+            sub_name: Name of the sub cluster
+
+        Returns:
+            None
+        """
         print("Writing dimred of subcluster %s" % sub_name)
         dimred = self.get_sub_dimred(sub_name)
         self.write_dimred_to_file(zobj, dimred_path=sub_dimred_path,
@@ -659,13 +802,34 @@ class SubclusterData(DataObject):
 
     @abc.abstractclassmethod
     def get_sub_cluster_names(self):
+        """Gets the names of the sub clusters
+
+        Returns:
+            An array contains the sub cluster names
+        """
         pass
 
     @abc.abstractclassmethod
     def get_sub_cell_indexes(self, sub_name):
+        """Gets indexes of the cells in the sub cluster
+
+        Keyword arguments:
+            sub_name: Name of the sub cluster
+
+        Returns:
+            An array contains the indexes
+        """
         pass
 
     def write_cluster_info(self, zobj, cluster_info_path, sub_name, selected_arr):
+        """Writes cluster info to a given zip object
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            cluster_info_path: Path in the zip object where cluster info will be written to
+            sub_name: Name of the sub cluster
+            selected_arr: A list of ints contains the indexes of the cells in the sub cluster
+        """
         obj = {
                 "name":sub_name,
                 "hash":sub_name,
@@ -681,6 +845,15 @@ class SubclusterData(DataObject):
             z.write(json.dumps(obj).encode("utf8"))
 
     def write_sub_clusters(self, zobj, study_name):
+        """Writes sub clusters data to a given zip object
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            study_name: Name of the study
+
+        Returns:
+            None
+        """
         sub_cluster_names = self.get_sub_cluster_names()
         id_list = []
         for cluster in sub_cluster_names:
@@ -699,16 +872,44 @@ class SubclusterData(DataObject):
             z.write(json.dumps({"main":id_list}).encode("utf8"))
 
     def write_bcs_to_file(self, zobj, study_name, replace_missing):
+        """Write data with sub clusters to a given zobj file as bcs format
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            study_name: Name of the study
+            replace_missing: A string indicates what missing values in metadata should be replaced with
+
+        Returns:
+            None
+        """
         DataObject.write_bcs_to_file(self, zobj, study_name, replace_missing)
         self.write_sub_clusters(zobj, study_name=study_name)
 
     def get_sub_dimred_path(self, study_name, sub_name):
+        """Gets the path where BBrowser reads dimred data of sub clusters
+
+        Keyword arguments:
+            study_name: Name of the study
+            sub_name: Name of the sub cluster
+        """
         return os.path.join(study_name, "sub", sub_name, "dimred")
 
     def get_sub_path(self, study_name, sub_name):
+        """Gets the path where BBrowser reads sub clusters data
+
+        Keyword arguments:
+            study_name: Name of the study
+            sub_name: Name of the sub cluster
+        """
         return os.path.join(study_name, "sub", sub_name)
 
     def get_cluster_info_path(self, study_name, sub_name):
+        """Gets the path where BBrowser reads cluster info
+
+        Keyword arguments:
+            study_name: Name of the study
+            sub_name: Name of the sub cluster
+        """
         return os.path.join(study_name, "sub", sub_name)
 
 class SpringData(SubclusterData):
