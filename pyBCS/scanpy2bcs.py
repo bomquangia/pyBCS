@@ -145,14 +145,17 @@ class DataObject(ABC):
         raw_M, raw_barcodes, raw_features = raw
         has_raw = True
         if raw_M is None:
+            print("Raw data is not available, using normalized data as raw data", flush=True)
             raw_M = norm_M.tocsr()
             barcodes = norm_barcodes
             features = norm_features
             has_raw = False
         elif raw_M.shape == norm_M.shape:
+            print("Normalized data and raw data are both available", flush=True)
             barcodes = norm_barcodes
             features = norm_features
         else:
+            print("Shape of normalized data (%d, %d) does not equal shape of raw data (%d %d), using raw data as normalized data" % (norm_M.shape + raw_M.shape), flush=True)
             norm_M = raw_M.tocsc()
             barcodes = raw_barcodes
             features = raw_features
