@@ -206,13 +206,15 @@ class DataObject(ABC):
         print("Writing main/metadata/metalist.json")
         metadata = self.get_metadata()
         for metaname in metadata.columns:
-            if metaname == self.graph_based:
-                continue
             try:
-                metadata[metaname] = pd.to_numeric(metadata[metaname],
-                                                    downcast="float")
+                if metaname != self.graph_based:
+                    metadata[metaname] = pd.to_numeric(metadata[metaname],
+                                                        downcast="float")
+                else:
+                    raise Exception()
             except:
                 print("Cannot convert %s to numeric, treating as categorical" % metaname)
+                metadata[metaname] = pd.Series(metadata[metaname], dtype="category")
 
         content = {}
         all_clusters = {}
