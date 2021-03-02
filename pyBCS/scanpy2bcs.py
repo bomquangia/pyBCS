@@ -18,6 +18,9 @@ BBROWSER_VERSION = "2.7.38"
 DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
 DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
 DEFAULT_DIMRED_KEYS = {"coors":["X", "Y"], "tsne":["_tSNE_1", "_tSNE_2"]}
+SCANPYDATA_DEFAULT_GRAPH_BASED = "louvain"
+SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
+LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
 
 class DataObject(ABC):
     def __init__(self, source, graph_based):
@@ -258,7 +261,7 @@ class DataObject(ABC):
                 "type":_type,
                 "history":[generate_history_object()]
             }
-            if metaname == self.graph_based:
+            if (self.graph_based is not None) and metaname == (self.graph_based):
                 graph_based_uid = uid
 
         graph_based_history = generate_history_object()
@@ -273,7 +276,10 @@ class DataObject(ABC):
             all_clusters["graph_based"] = all_clusters[graph_based_uid]
             del content[graph_based_uid]
         else:
-            print("Cannot find graph based clustering in metadata with keyword \"%s\", generating a fake one" % self.graph_based)
+            if self.graph_based is None:
+                print("User does not specify name for graph based metadata, generating a fake one")
+            else:
+                print("Cannot find graph based clustering in metadata with keyword \"%s\", generating a fake one" % self.graph_based)
             content["graph_based"] = {
                 "id":"graph_based",
                 "name":"Graph-based clusters",
@@ -604,8 +610,9 @@ class ScanpyData(DataObject):
             graph_based: Name of metadata that is the result of clustering process
             raw_key: Where to look for raw data in AnnData.layers
         """
-        DataObject.__init__(self, source=source,
-                            graph_based="louvain" if graph_based is None else graph_based)
+        if graph_based is None:
+            graph_based = SCANPYDATA_DEFAULT_GRAPH_BASED
+        DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
 
@@ -927,8 +934,9 @@ class SpringData(SubclusterData):
             source: Path to input file or folder
             graph_based: Name of metadata that is the result of clustering process
         """
-        DataObject.__init__(self, source=source,
-                            graph_based="ClustersWT" if graph_based is None else graph_based)
+        if graph_based is None:
+            graph_based = SPRINGDATA_DEFAULT_GRAPH_BASED
+        DataObject.__init__(self, source=source, graph_based=graph_based)
 
     def get_barcodes(self):
         full_data = self.get_full_data_names()[0]
@@ -1053,6 +1061,8 @@ class LoomData(DataObject):
                         barcode_name=DEFAULT_BARCODE_NAME,
                         feature_name=DEFAULT_FEATURE_NAME,
                         dimred_keys=DEFAULT_DIMRED_KEYS):
+        if graph_based is None:
+            graph_based = LOOMDATA_DEFAULT_GRAPH_BASED
         DataObject.__init__(self, source, graph_based)
         self.raw_key = raw_key
         self.object = loompy.connect(source, "r")
