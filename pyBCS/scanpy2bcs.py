@@ -837,7 +837,7 @@ class SubclusterData(DataObject):
                 #TODO Use a defined constant for this
                 "bbrowser_version":BBROWSER_VERSION,
                 "created_at":time.time() * 1000,
-                "created_by":"bbrowser_format_converter",
+                "created_by":"pyBCS",
                 "version":1,
                 "path":sub_name
                 }
@@ -1061,7 +1061,7 @@ def generate_history_object():
     """Generates a Bioturing-format history object
     """
     return {
-        "created_by":"bbrowser_format_converter",
+        "created_by":"pyBCS",
         "created_at":time.time() * 1000,
         "hash_id":generate_uuid(),
         "description":"Created by converting scanpy object to bbrowser format"
