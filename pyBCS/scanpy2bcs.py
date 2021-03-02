@@ -12,7 +12,12 @@ import zipfile
 from pandas.api.types import is_numeric_dtype
 from abc import ABC, abstractmethod
 import abc
+import loompy
+
 BBROWSER_VERSION = "2.7.38"
+DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
+DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
+DEFAULT_DIMRED_KEYS = {"coors":["X", "Y"], "tsne":["_tSNE_1", "_tSNE_2"]}
 
 class DataObject(ABC):
     def __init__(self, source, graph_based):
@@ -1041,6 +1046,88 @@ class SpringData(SubclusterData):
         coordinates = df.loc[ids, :].to_numpy()
         return {"coordinates" : coordinates}
 
+class LoomData(DataObject):
+    def __init__(self, source, graph_based, raw_key="counts",
+                        barcode_name=DEFAULT_BARCODE_NAME,
+                        feature_name=DEFAULT_FEATURE_NAME,
+                        dimred_keys=DEFAULT_DIMRED_KEYS):
+        DataObject.__init__(self, source, graph_based)
+        self.raw_key = raw_key
+        self.object = loompy.connect(source, "r")
+        if barcode_name is None:
+            self.barcode_name = DEFAULT_BARCODE_NAME
+        else:
+            try:
+                _ = iter(barcode_name)
+                self.barcode_name = barcode_name
+            except:
+                self.barcode_name = [barcode_name]
+
+        if feature_name is None:
+            self.feature_name = DEFAULT_FEATURE_NAME
+        else:
+            try:
+                _ = iter(feature_name)
+                self.feature_name = feature_name
+            except:
+                self.feature_name = [feature_name]
+
+        if dimred_keys is None:
+            self.dimred_keys = DEFAULT_DIMRED_KEYS
+        else:
+            for key in dimred_keys:
+                if len(dimred_keys[key]) < 2:
+                    raise Exception("Dimensional reduction data must have at least two dimensions")
+            self.dimred_keys = dimred_keys
+
+    def get_n_cells(self):
+        return self.object.shape[1]
+
+    def get_n_genes(self):
+        return self.object.shape[0]
+
+    def get_barcodes(self):
+        for key in self.barcode_name:
+            try:
+                return self.object.col_attrs[key]
+            except:
+                continue
+        print("Cannot find barcodes in given keys, using numbers")
+        return range(self.get_n_cells())
+
+    def get_features(self):
+        for key in self.feature_name:
+            try:
+                return self.object.row_attrs[key]
+            except:
+                continue
+        raise Exception("Cannot find gene names in given keys: %s" % str(self.feature_name))
+
+    def get_raw_barcodes(self):
+        return self.get_barcodes()
+
+    def get_raw_features(self):
+        return self.get_features()
+
+    def get_raw_matrix(self):
+        return self.object.layers[self.raw_key].sparse().transpose().tocsr()
+
+    def get_normalized_matrix(self):
+        return self.object.sparse().transpose().tocsc()
+
+    def get_metadata(self):
+        df = pd.DataFrame.from_dict(dict(self.object.col_attrs))
+        return df
+
+    def get_dimred(self):
+        df = pd.DataFrame.from_dict(dict(self.object.col_attrs))
+        dimred = {}
+        for key in self.dimred_keys:
+            dimred[key] = df[self.dimred_keys[key]].to_numpy()
+        return dimred
+
+
+
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
 
@@ -1093,7 +1180,10 @@ def add_category_to_first(column, new_category):
     column = column.cat.reorder_categories(cat)
     return column
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts",
+                replace_missing="Unassigned", graph_based=None,
+                barcode_name=None, feature_name=None,
+                dimred_keys=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1117,7 +1207,13 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts", repl
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
     elif input_format == "spring":
         data_object = SpringData(source, graph_based=graph_based)
+    elif input_format == "loom":
+        data_object = LoomData(source, graph_based=graph_based,
+                                barcode_name=barcode_name,
+                                feature_name=feature_name,
+                                dimred_keys=dimred_keys)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(study_name=study_id, output_name=output_name,
                                     replace_missing=replace_missing)
+
