@@ -8,7 +8,17 @@ Visit our [github](https://github.com/bioturing/pyBCS) for more detail.
 
 ## Example
 
+### Scanpy
+
 ```python
 from pyBCS import scanpy2bcs
 scanpy2bcs.format_data('/mnt/example/data.h5ad', '/mnt/example/data.bcs')
+```
+
+
+### SPRING
+
+```python
+from pyBCS import scanpy2bcs
+scanpy2bcs.format_data('/mnt/example/spring_study', '/mnt/example/data.bcs', input_format='spring')
 ```
