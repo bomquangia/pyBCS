@@ -1068,21 +1068,17 @@ class LoomData(DataObject):
         self.object = loompy.connect(source, "r")
         if barcode_name is None:
             self.barcode_name = DEFAULT_BARCODE_NAME
+        elif isinstance(barcode_name, str):
+            self.barcode_name = [barcode_name]
         else:
-            try:
-                _ = iter(barcode_name)
-                self.barcode_name = barcode_name
-            except:
-                self.barcode_name = [barcode_name]
+            self.barcode_name = barcode_name
 
         if feature_name is None:
             self.feature_name = DEFAULT_FEATURE_NAME
+        elif isinstance(feature_name, str):
+            self.feature_name = [feature_name]
         else:
-            try:
-                _ = iter(feature_name)
-                self.feature_name = feature_name
-            except:
-                self.feature_name = [feature_name]
+            self.feature_name = feature_name
 
         if dimred_keys is None:
             self.dimred_keys = DEFAULT_DIMRED_KEYS
@@ -1104,8 +1100,8 @@ class LoomData(DataObject):
                 return self.object.col_attrs[key]
             except:
                 continue
-        print("Cannot find barcodes in given keys, using numbers")
-        return range(self.get_n_cells())
+        print("Cannot find barcodes in given keys %s, using numbers" % str(self.barcode_name))
+        return [str(x) for x in range(self.get_n_cells())]
 
     def get_features(self):
         for key in self.feature_name:
