@@ -23,12 +23,13 @@ from pyBCS import scanpy2bcs
 scanpy2bcs.format_data('/mnt/example/spring_study', '/mnt/example/data.bcs', input_format='spring')
 ```
 
-
 ### Loom
 
-
+```python
 from pyBCS import scanpy2bcs
-scanpy2bcs.format_data('/mnt/example/data.loom', '/mnt/example/data.bcs', input_format='loom',
-				barcode_name='CellID',
-				feature_name='Gene',
-				dimred_keys={'tsne':["tsne1", "tsne2"]}
+scanpy2bcs.format_data('/mnt/example/data.loom', '/mnt/example/data.bcs',
+                        input_format='loom',
+                        barcode_name='CellID',
+                        feature_name='Gene',
+                        dimred_keys={'tsne':["tsne1", "tsne2"]}
+```
