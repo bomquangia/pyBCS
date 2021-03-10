@@ -142,6 +142,14 @@ class DataObject(ABC):
         """
         pass
 
+    def get_misc(self):
+        """Gets general infomation of study
+
+        Returns:
+            A dictionary whose each value is a string describes the attribute
+        """
+        return None
+
     def sync_data(self, norm, raw):
         """Synces normalized and raw data
 
@@ -546,6 +554,9 @@ class DataObject(ABC):
             "history":[runinfo_history],
             "unit":unit
         }
+        misc = self.get_misc()
+        if misc is not None:
+            run_info["misc"] = misc
         with zobj.open(os.path.join(runinfo_path, "run_info.json"), "w") as z:
             z.write(json.dumps(run_info).encode("utf8"))
 
