@@ -18,6 +18,8 @@ BBROWSER_VERSION = "2.7.38"
 DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
 DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
 DEFAULT_DIMRED_KEYS = {"coors":["X", "Y"], "tsne":["_tSNE_1", "_tSNE_2"]}
+DEFAULT_ABLOOM_BARCODE_NAME = "observation_id"
+DEFAULT_ABLOOM_FEATURE_NAME = "accession_id"
 SCANPYDATA_DEFAULT_GRAPH_BASED = "louvain"
 SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
 LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
@@ -146,7 +148,7 @@ class DataObject(ABC):
         """Gets general infomation of study
 
         Returns:
-            A dictionary whose each value is a string describes the attribute
+            A dictionary whose each key is the name of the attribute
         """
         return None
 
@@ -1145,7 +1147,98 @@ class LoomData(DataObject):
             dimred[key] = df[self.dimred_keys[key]].to_numpy()
         return dimred
 
+class AbloomData(DataObject):
+    def __init__(self, source, graph_based, raw_key="counts",
+                        barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
+                        feature_name=DEFAULT_ABLOOM_FEATURE_NAME):
+        DataObject.__init__(self, source, graph_based)
+        self.raw_key = raw_key
+        if barcode_name is None:
+            barcode_name = DEFAULT_ABLOOM_BARCODE_NAME
+        if feature_name is None:
+            feature_name = DEFAULT_ABLOOM_FEATURE_NAME
+        self.barcode_name = barcode_name
+        self.feature_name = feature_name
+        self.object = h5py.File(source, "r")
 
+    def get_n_cells(self):
+        return int(self.object["matrix"].attrs["ncol"][0])
+
+    def get_n_genes(self):
+        return int(self.object["matrix"].attrs["nrow"][0])
+
+    def get_barcodes(self):
+        try:
+            return np.array(self.object["col_attrs"][self.barcode_name]).astype("str")
+        except:
+            print("Cannot read barcodes, using numbers instead")
+            return [str(x) for x in range(self.get_n_cells())]
+
+    def get_features(self):
+        return np.array(self.object["row_attrs"][self.feature_name]).astype("str")
+
+    def get_raw_barcodes(self):
+        return self.get_barcodes()
+
+    def get_raw_features(self):
+        return self.get_features()
+
+    def get_raw_matrix(self):
+        matrix_type = self.object["layers"][self.raw_key].attrs["type"]
+        if matrix_type == b"dgTMatrix":
+            coo = self.object["layers"][self.raw_key][:][:]
+            mat = scipy.sparse.coo_matrix((coo[2][:], (coo[0][:] - 1, coo[1][:] - 1)),
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsr()
+        else:
+            mat = scipy.sparse.csc_matrix(self.object["layers"][self.raw_key][:][:],
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsr()
+
+    def get_normalized_matrix(self):
+        matrix_type = self.object["matrix"].attrs["type"]
+        if matrix_type == b"dgTMatrix":
+            coo = self.object["matrix"][:][:]
+            mat = scipy.sparse.coo_matrix((coo[2][:], (coo[0][:] - 1, coo[1][:] - 1)),
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsc()
+        else:
+            mat = scipy.sparse.csr_matrix(self.object["matrix"][:][:],
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsc()
+
+    def get_metadata(self):
+        df = pd.DataFrame.from_dict(dict(self.object["col_attrs"]))
+        str_df = df.select_dtypes([np.object])
+        str_df = str_df.stack().str.decode('utf-8').unstack()
+        df[str_df.columns] = str_df
+        return df
+
+    def get_dimred(self):
+        dimred = {}
+        for key in self.object["layers_reduced/visualizations"]:
+            dimred[key] = np.transpose(np.array(self.object["layers_reduced/visualizations"][key]))
+        return dimred
+
+    def get_misc(self):
+        res = {}
+        for key in self.object.attrs:
+            value = self.object.attrs[key]
+            if len(value) > 1:
+                res[key] = [bytes_to_string(x) for x in value]
+            elif len(value) == 1:
+                res[key] = bytes_to_string(value[0])
+        return res
+
+def bytes_to_string(x):
+    try:
+        return x.decode("utf8")
+    except:
+        return x
 
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
@@ -1231,6 +1324,10 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
                                 barcode_name=barcode_name,
                                 feature_name=feature_name,
                                 dimred_keys=dimred_keys)
+    elif input_format == "abloom":
+        data_object = AbloomData(source, graph_based=graph_based,
+                                    barcode_name=barcode_name,
+                                    feature_name=feature_name)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(study_name=study_id, output_name=output_name,
