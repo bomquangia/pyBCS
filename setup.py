@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 version = {}
-with open("version.py", "r") as f:
+with open("pyBCS/version.py", "r") as f:
     exec(f.read(), version)
 
 setuptools.setup(

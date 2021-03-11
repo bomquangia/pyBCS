@@ -13,7 +13,7 @@ from pandas.api.types import is_numeric_dtype
 from abc import ABC, abstractmethod
 import abc
 import loompy
-
+from pathlib import Path
 BBROWSER_VERSION = "2.7.38"
 DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
 DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
@@ -557,8 +557,8 @@ class DataObject(ABC):
 
     def write_bcs_info(self, zobj, bcs_info_path):
         version = {}
-        with open("../version.py", "r") as f:
-            exec(fp.read(), version)
+        with open(os.path.join(Path(__file__).parent, "version.py"), "r") as f:
+            exec(f.read(), version)
         bcs_info = {
                 "version":version["__version__"]
                 }
