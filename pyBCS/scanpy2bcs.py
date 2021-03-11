@@ -410,30 +410,11 @@ class DataObject(ABC):
         Returns:
             None
         """
-        print("Writing group \"bioturing\"")
-        bioturing_group = dest_hdf5.create_group("bioturing")
-        bioturing_group.create_dataset("barcodes",
-                                        data=encode_strings(barcodes))
-        bioturing_group.create_dataset("features",
-                                        data=encode_strings(features))
-        bioturing_group.create_dataset("data", data=raw_M.data)
-        bioturing_group.create_dataset("indices", data=raw_M.indices)
-        bioturing_group.create_dataset("indptr", data=raw_M.indptr)
-        bioturing_group.create_dataset("feature_type", data=["RNA".encode("utf8")] * len(features))
-        bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
-
         if has_raw:
             print("Writing group \"countsT\"")
             raw_M_T = raw_M.tocsc()
             countsT_group = dest_hdf5.create_group("countsT")
-            countsT_group.create_dataset("barcodes",
-                                            data=encode_strings(features))
-            countsT_group.create_dataset("features",
-                                            data=encode_strings(barcodes))
             countsT_group.create_dataset("data", data=raw_M_T.data)
-            countsT_group.create_dataset("indices", data=raw_M_T.indices)
-            countsT_group.create_dataset("indptr", data=raw_M_T.indptr)
-            countsT_group.create_dataset("shape", data=[len(barcodes), len(features)])
         else:
             print("Raw data is not available, ignoring \"countsT\"")
 
@@ -574,6 +555,16 @@ class DataObject(ABC):
         with zobj.open(os.path.join(runinfo_path, "run_info.json"), "w") as z:
             z.write(json.dumps(run_info).encode("utf8"))
 
+    def write_bcs_info(self, zobj, bcs_info_path):
+        version = {}
+        with open("../version.py", "r") as f:
+            exec(fp.read(), version)
+        bcs_info = {
+                "version":version["__version__"]
+                }
+        with zobj.open(os.path.join(bcs_info_path, "bcs_info.json"), "w") as z:
+            z.write(json.dumps(bcs_info).encode("utf8"))
+
     def write_bcs_to_file(self, zobj, study_name, replace_missing):
         """Write data to a given zobj file as bcs format
 
@@ -594,6 +585,7 @@ class DataObject(ABC):
         self.write_runinfo(zobj, study_name=study_name,
                             runinfo_path=self.get_runinfo_path(study_name),
                             unit=unit)
+        self.write_bcs_info(zobj, bcs_info_path=study_name)
 
     def write_bcs(self, study_name, output_name, replace_missing="Unassigned"):
         """Writes data to bcs file
