@@ -5,4 +5,7 @@
 !LICENSE
 !build.sh
 !package.sh
+!bcs_transpose.pyx
+
 !pyBCS/*.py
+
