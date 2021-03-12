@@ -10,6 +10,12 @@ import sys
 def get_partial(n, partial):
     return np.max([1, n // partial])
 
+def replace_dataset(f, name, *args, **kwargs):
+    if name in f:
+        print("\"%s\" has already existed, overwriting" % name)
+        del f[name]
+    f.create_dataset(name, *args, **kwargs)
+
 def light_transpose(bcs_path, partial):
     partial = int(partial)
     tmp_path = "." + str(uuid.uuid4())
@@ -46,8 +52,8 @@ def light_transpose(bcs_path, partial):
     stamp = time.time()
     with h5py.File(tmp_path, "r") as f:
         with h5py.File(bcs_path, "a") as g:
-            g.create_dataset("bioturing/data", shape=(nnz, ), dtype="f4")
-            g.create_dataset("bioturing/indices", shape=(nnz, ), dtype="i4")
+            replace_dataset(g, name="bioturing/data", shape=(nnz, ), dtype="f4")
+            replace_dataset(g, name="bioturing/indices", shape=(nnz, ), dtype="i4")
             joined_indptr = []
             k = get_partial(n, partial)
             i = 0
@@ -77,11 +83,11 @@ def light_transpose(bcs_path, partial):
                 i += p
                 print("Done a circle in %f seconds (%.2f%%)" % (time.time() - pre, i / n * 100), flush=True)
             joined_indptr.append(nnz)
-            g.create_dataset("bioturing/indptr", data=joined_indptr)
-            g.create_dataset("bioturing/shape", data=[m, n])
-            g.create_dataset("bioturing/barcodes", data=g["normalizedT"]["features"])
-            g.create_dataset("bioturing/features", data=g["normalizedT"]["barcodes"])
-            g.create_dataset("bioturing/feature_type", data=["RNA".encode("utf8")] * m)
+            replace_dataset(g, name="bioturing/indptr", data=joined_indptr)
+            replace_dataset(g, name="bioturing/shape", data=[m, n])
+            replace_dataset(g, name="bioturing/barcodes", data=g["normalizedT"]["features"])
+            replace_dataset(g, name="bioturing/features", data=g["normalizedT"]["barcodes"])
+            replace_dataset(g, name="bioturing/feature_type", data=["RNA".encode("utf8")] * m)
     print("Done joining matrices in %f seconds" % (time.time() - stamp), flush=True)
     os.remove(tmp_path)
 
@@ -91,11 +97,11 @@ def create_countsT(bcs_path):
         if "countsT" not in f:
             print("Raw data is not available, ignoring \"countsT\"")
             return
-        f.create_dataset("countsT/indptr", data=f["normalizedT/indptr"])
-        f.create_dataset("countsT/indices", data=f["normalizedT/indices"])
-        f.create_dataset("countsT/shape", data=f["normalizedT/shape"])
-        f.create_dataset("countsT/features", data=f["normalizedT/features"])
-        f.create_dataset("countsT/barcodes", data=f["normalizedT/barcodes"])
+        replace_dataset(f, name="countsT/indptr", data=f["normalizedT/indptr"])
+        replace_dataset(f, name="countsT/indices", data=f["normalizedT/indices"])
+        replace_dataset(f, name="countsT/shape", data=f["normalizedT/shape"])
+        replace_dataset(f, name="countsT/features", data=f["normalizedT/features"])
+        replace_dataset(f, name="countsT/barcodes", data=f["normalizedT/barcodes"])
 
 def bcs_transpose(bcs_path, partial):
     light_transpose(bcs_path, partial)
