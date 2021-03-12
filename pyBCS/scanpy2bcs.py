@@ -12,7 +12,17 @@ import zipfile
 from pandas.api.types import is_numeric_dtype
 from abc import ABC, abstractmethod
 import abc
+import loompy
+
 BBROWSER_VERSION = "2.7.38"
+DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
+DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
+DEFAULT_DIMRED_KEYS = {"coors":["X", "Y"], "tsne":["_tSNE_1", "_tSNE_2"]}
+DEFAULT_ABLOOM_BARCODE_NAME = "observation_id"
+DEFAULT_ABLOOM_FEATURE_NAME = "accession_id"
+SCANPYDATA_DEFAULT_GRAPH_BASED = "louvain"
+SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
+LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
 
 class DataObject(ABC):
     def __init__(self, source, graph_based):
@@ -27,6 +37,18 @@ class DataObject(ABC):
         """
         self.source = source
         self.graph_based = graph_based
+
+    def __del__(self):
+        self.close()
+
+    @abc.abstractclassmethod
+    def close(self):
+        """Release resources
+
+        Returns:
+            None
+        """
+        pass
 
     def get_n_cells(self):
         """Gets the number of cells
@@ -134,6 +156,14 @@ class DataObject(ABC):
         """
         pass
 
+    def get_misc(self):
+        """Gets general infomation of study
+
+        Returns:
+            A dictionary whose each key is the name of the attribute
+        """
+        return None
+
     def sync_data(self, norm, raw):
         """Synces normalized and raw data
 
@@ -201,13 +231,15 @@ class DataObject(ABC):
         print("Writing main/metadata/metalist.json")
         metadata = self.get_metadata()
         for metaname in metadata.columns:
-            if metaname == self.graph_based:
-                continue
             try:
-                metadata[metaname] = pd.to_numeric(metadata[metaname],
-                                                    downcast="float")
+                if metaname != self.graph_based:
+                    metadata[metaname] = pd.to_numeric(metadata[metaname],
+                                                        downcast="float")
+                else:
+                    raise Exception()
             except:
                 print("Cannot convert %s to numeric, treating as categorical" % metaname)
+                metadata[metaname] = pd.Series(metadata[metaname], dtype="category")
 
         content = {}
         all_clusters = {}
@@ -251,7 +283,7 @@ class DataObject(ABC):
                 "type":_type,
                 "history":[generate_history_object()]
             }
-            if metaname == self.graph_based:
+            if (self.graph_based is not None) and metaname == (self.graph_based):
                 graph_based_uid = uid
 
         graph_based_history = generate_history_object()
@@ -266,7 +298,10 @@ class DataObject(ABC):
             all_clusters["graph_based"] = all_clusters[graph_based_uid]
             del content[graph_based_uid]
         else:
-            print("Cannot find graph based clustering in metadata with keyword \"%s\", generating a fake one" % self.graph_based)
+            if self.graph_based is None:
+                print("User does not specify name for graph based metadata, generating a fake one")
+            else:
+                print("Cannot find graph based clustering in metadata with keyword \"%s\", generating a fake one" % self.graph_based)
             content["graph_based"] = {
                 "id":"graph_based",
                 "name":"Graph-based clusters",
@@ -533,6 +568,9 @@ class DataObject(ABC):
             "history":[runinfo_history],
             "unit":unit
         }
+        misc = self.get_misc()
+        if misc is not None:
+            run_info["misc"] = misc
         with zobj.open(os.path.join(runinfo_path, "run_info.json"), "w") as z:
             z.write(json.dumps(run_info).encode("utf8"))
 
@@ -568,9 +606,13 @@ class DataObject(ABC):
         Returns:
             Path to output file
         """
-        with zipfile.ZipFile(output_name, "w") as zobj:
-            self.write_bcs_to_file(zobj, study_name, replace_missing)
-        return output_name
+        try:
+            with zipfile.ZipFile(output_name, "w") as zobj:
+                self.write_bcs_to_file(zobj, study_name, replace_missing)
+            return output_name
+        except Exception as e:
+            self.close()
+            raise e
 
     def get_metadata_path(self, study_name):
         return os.path.join(study_name, "main", "metadata")
@@ -597,10 +639,14 @@ class ScanpyData(DataObject):
             graph_based: Name of metadata that is the result of clustering process
             raw_key: Where to look for raw data in AnnData.layers
         """
-        DataObject.__init__(self, source=source,
-                            graph_based="louvain" if graph_based is None else graph_based)
+        if graph_based is None:
+            graph_based = SCANPYDATA_DEFAULT_GRAPH_BASED
+        DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
+
+    def close(self):
+        pass
 
     def get_barcodes(self):
         return self.object.obs_names
@@ -920,8 +966,12 @@ class SpringData(SubclusterData):
             source: Path to input file or folder
             graph_based: Name of metadata that is the result of clustering process
         """
-        DataObject.__init__(self, source=source,
-                            graph_based="ClustersWT" if graph_based is None else graph_based)
+        if graph_based is None:
+            graph_based = SPRINGDATA_DEFAULT_GRAPH_BASED
+        DataObject.__init__(self, source=source, graph_based=graph_based)
+
+    def close(self):
+        pass
 
     def get_barcodes(self):
         full_data = self.get_full_data_names()[0]
@@ -1041,6 +1091,183 @@ class SpringData(SubclusterData):
         coordinates = df.loc[ids, :].to_numpy()
         return {"coordinates" : coordinates}
 
+class LoomData(DataObject):
+    def __init__(self, source, graph_based, raw_key="counts",
+                        barcode_name=DEFAULT_BARCODE_NAME,
+                        feature_name=DEFAULT_FEATURE_NAME,
+                        dimred_keys=DEFAULT_DIMRED_KEYS):
+        if graph_based is None:
+            graph_based = LOOMDATA_DEFAULT_GRAPH_BASED
+        DataObject.__init__(self, source, graph_based)
+        self.raw_key = raw_key
+        self.object = loompy.connect(source, "r")
+        if barcode_name is None:
+            self.barcode_name = DEFAULT_BARCODE_NAME
+        elif isinstance(barcode_name, str):
+            self.barcode_name = [barcode_name]
+        else:
+            self.barcode_name = barcode_name
+
+        if feature_name is None:
+            self.feature_name = DEFAULT_FEATURE_NAME
+        elif isinstance(feature_name, str):
+            self.feature_name = [feature_name]
+        else:
+            self.feature_name = feature_name
+
+        if dimred_keys is None:
+            self.dimred_keys = DEFAULT_DIMRED_KEYS
+        else:
+            for key in dimred_keys:
+                if len(dimred_keys[key]) < 2:
+                    raise Exception("Dimensional reduction data must have at least two dimensions")
+            self.dimred_keys = dimred_keys
+
+    def close(self):
+        self.object.close()
+
+    def get_n_cells(self):
+        return self.object.shape[1]
+
+    def get_n_genes(self):
+        return self.object.shape[0]
+
+    def get_barcodes(self):
+        for key in self.barcode_name:
+            try:
+                return self.object.col_attrs[key]
+            except:
+                continue
+        print("Cannot find barcodes in given keys %s, using numbers" % str(self.barcode_name))
+        return [str(x) for x in range(self.get_n_cells())]
+
+    def get_features(self):
+        for key in self.feature_name:
+            try:
+                return self.object.row_attrs[key]
+            except:
+                continue
+        raise Exception("Cannot find gene names in given keys: %s" % str(self.feature_name))
+
+    def get_raw_barcodes(self):
+        return self.get_barcodes()
+
+    def get_raw_features(self):
+        return self.get_features()
+
+    def get_raw_matrix(self):
+        return self.object.layers[self.raw_key].sparse().transpose().tocsr()
+
+    def get_normalized_matrix(self):
+        return self.object.sparse().transpose().tocsc()
+
+    def get_metadata(self):
+        df = pd.DataFrame.from_dict(dict(self.object.col_attrs))
+        return df
+
+    def get_dimred(self):
+        df = pd.DataFrame.from_dict(dict(self.object.col_attrs))
+        dimred = {}
+        for key in self.dimred_keys:
+            dimred[key] = df[self.dimred_keys[key]].to_numpy()
+        return dimred
+
+class AbloomData(DataObject):
+    def __init__(self, source, graph_based, raw_key="counts",
+                        barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
+                        feature_name=DEFAULT_ABLOOM_FEATURE_NAME):
+        DataObject.__init__(self, source, graph_based)
+        self.raw_key = raw_key
+        if barcode_name is None:
+            barcode_name = DEFAULT_ABLOOM_BARCODE_NAME
+        if feature_name is None:
+            feature_name = DEFAULT_ABLOOM_FEATURE_NAME
+        self.barcode_name = barcode_name
+        self.feature_name = feature_name
+        self.object = h5py.File(source, "r")
+
+    def close(self):
+        self.object.close()
+
+    def get_n_cells(self):
+        return int(self.object["matrix"].attrs["ncol"][0])
+
+    def get_n_genes(self):
+        return int(self.object["matrix"].attrs["nrow"][0])
+
+    def get_barcodes(self):
+        try:
+            return np.array(self.object["col_attrs"][self.barcode_name]).astype("str")
+        except:
+            print("Cannot read barcodes, using numbers instead")
+            return [str(x) for x in range(self.get_n_cells())]
+
+    def get_features(self):
+        return np.array(self.object["row_attrs"][self.feature_name]).astype("str")
+
+    def get_raw_barcodes(self):
+        return self.get_barcodes()
+
+    def get_raw_features(self):
+        return self.get_features()
+
+    def get_raw_matrix(self):
+        matrix_type = self.object["layers"][self.raw_key].attrs["type"]
+        if matrix_type == b"dgTMatrix":
+            coo = self.object["layers"][self.raw_key][:][:]
+            mat = scipy.sparse.coo_matrix((coo[2][:], (coo[0][:] - 1, coo[1][:] - 1)),
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsr()
+        else:
+            mat = scipy.sparse.csc_matrix(self.object["layers"][self.raw_key][:][:],
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsr()
+
+    def get_normalized_matrix(self):
+        matrix_type = self.object["matrix"].attrs["type"]
+        if matrix_type == b"dgTMatrix":
+            coo = self.object["matrix"][:][:]
+            mat = scipy.sparse.coo_matrix((coo[2][:], (coo[0][:] - 1, coo[1][:] - 1)),
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsc()
+        else:
+            mat = scipy.sparse.csr_matrix(self.object["matrix"][:][:],
+                                            shape=(self.get_n_genes(),
+                                                    self.get_n_cells()))
+            return mat.transpose().tocsc()
+
+    def get_metadata(self):
+        df = pd.DataFrame.from_dict(dict(self.object["col_attrs"]))
+        str_df = df.select_dtypes([np.object])
+        str_df = str_df.stack().str.decode('utf-8').unstack()
+        df[str_df.columns] = str_df
+        return df
+
+    def get_dimred(self):
+        dimred = {}
+        for key in self.object["layers_reduced/visualizations"]:
+            dimred[key] = np.transpose(np.array(self.object["layers_reduced/visualizations"][key]))
+        return dimred
+
+    def get_misc(self):
+        res = {}
+        for key in self.object.attrs:
+            value = self.object.attrs[key]
+            if len(value) > 1:
+                res[key] = [bytes_to_string(x) for x in value]
+            elif len(value) == 1:
+                res[key] = bytes_to_string(value[0])
+        return res
+
+def bytes_to_string(x):
+    try:
+        return x.decode("utf8")
+    except:
+        return x
+
 def generate_uuid(remove_hyphen=True):
     """Generates a unique uuid string
 
@@ -1093,7 +1320,10 @@ def add_category_to_first(column, new_category):
     column = column.cat.reorder_categories(cat)
     return column
 
-def format_data(source, output_name, input_format="h5ad", raw_key="counts", replace_missing="Unassigned", graph_based=None):
+def format_data(source, output_name, input_format="h5ad", raw_key="counts",
+                replace_missing="Unassigned", graph_based=None,
+                barcode_name=None, feature_name=None,
+                dimred_keys=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1117,7 +1347,17 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts", repl
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
     elif input_format == "spring":
         data_object = SpringData(source, graph_based=graph_based)
+    elif input_format == "loom":
+        data_object = LoomData(source, graph_based=graph_based,
+                                barcode_name=barcode_name,
+                                feature_name=feature_name,
+                                dimred_keys=dimred_keys)
+    elif input_format == "abloom":
+        data_object = AbloomData(source, graph_based=graph_based,
+                                    barcode_name=barcode_name,
+                                    feature_name=feature_name)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(study_name=study_id, output_name=output_name,
                                     replace_missing=replace_missing)
+

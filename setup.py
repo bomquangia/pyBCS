@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyBCS-bioturing",
-    version="0.2.1",
+    version="0.3.0",
     author="BioTuring",
     author_email="support@bioturing.com",
     description="Create BioTuring Compressed Study (bcs) file",
@@ -21,6 +21,7 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         "scanpy>=1.6.0",
-        "anndata>=0.7.5"
+        "anndata>=0.7.5",
+        "loompy>=3.0.6"
     ]
 )
