@@ -38,6 +38,15 @@ class DataObject(ABC):
         self.source = source
         self.graph_based = graph_based
 
+    @abc.abstractclassmethod
+    def close(self):
+        """Release resources
+
+        Returns:
+            None
+        """
+        pass
+
     def get_n_cells(self):
         """Gets the number of cells
 
@@ -594,9 +603,13 @@ class DataObject(ABC):
         Returns:
             Path to output file
         """
-        with zipfile.ZipFile(output_name, "w") as zobj:
-            self.write_bcs_to_file(zobj, study_name, replace_missing)
-        return output_name
+        try:
+            with zipfile.ZipFile(output_name, "w") as zobj:
+                self.write_bcs_to_file(zobj, study_name, replace_missing)
+            return output_name
+        except Exception as e:
+            self.close()
+            raise e
 
     def get_metadata_path(self, study_name):
         return os.path.join(study_name, "main", "metadata")
@@ -628,6 +641,9 @@ class ScanpyData(DataObject):
         DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
+
+    def close(self):
+        pass
 
     def get_barcodes(self):
         return self.object.obs_names
@@ -951,6 +967,9 @@ class SpringData(SubclusterData):
             graph_based = SPRINGDATA_DEFAULT_GRAPH_BASED
         DataObject.__init__(self, source=source, graph_based=graph_based)
 
+    def close(self):
+        pass
+
     def get_barcodes(self):
         full_data = self.get_full_data_names()[0]
         idx = self.get_sub_cell_indexes(full_data)
@@ -1101,6 +1120,9 @@ class LoomData(DataObject):
                     raise Exception("Dimensional reduction data must have at least two dimensions")
             self.dimred_keys = dimred_keys
 
+    def close(self):
+        pass
+
     def get_n_cells(self):
         return self.object.shape[1]
 
@@ -1160,6 +1182,9 @@ class AbloomData(DataObject):
         self.barcode_name = barcode_name
         self.feature_name = feature_name
         self.object = h5py.File(source, "r")
+
+    def close(self):
+        self.object.close()
 
     def get_n_cells(self):
         return int(self.object["matrix"].attrs["ncol"][0])
