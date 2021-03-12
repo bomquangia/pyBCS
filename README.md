@@ -12,7 +12,8 @@ Visit our [github](https://github.com/bioturing/pyBCS) for more detail.
 
 ```python
 from pyBCS import scanpy2bcs
-scanpy2bcs.format_data('/mnt/example/data.h5ad', '/mnt/example/data.bcs')
+scanpy2bcs.format_data("/mnt/example/data.h5ad", "/mnt/example/data.bcs",
+                        input_format="h5ad", graph_based="louvain")
 ```
 
 
@@ -20,16 +21,29 @@ scanpy2bcs.format_data('/mnt/example/data.h5ad', '/mnt/example/data.bcs')
 
 ```python
 from pyBCS import scanpy2bcs
-scanpy2bcs.format_data('/mnt/example/spring_study', '/mnt/example/data.bcs', input_format='spring')
+scanpy2bcs.format_data("/mnt/example/spring_study", "/mnt/example/data.bcs",
+                        input_format="spring",
+                        graph_based="louvain")
 ```
 
 ### Loom
 
 ```python
 from pyBCS import scanpy2bcs
-scanpy2bcs.format_data('/mnt/example/data.loom', '/mnt/example/data.bcs',
-                        input_format='loom',
-                        barcode_name='CellID',
-                        feature_name='Gene',
-                        dimred_keys={'tsne':["tsne1", "tsne2"]}
+scanpy2bcs.format_data("/mnt/example/data.loom", "/mnt/example/data.bcs",
+                        input_format="loom",
+                        barcode_name="CellID",
+                        feature_name="Gene",
+                        dimred_keys={"tsne":["tsne1", "tsne2"]})
+```
+
+### Abloom
+
+```python
+from pyBCS import scanpy2bcs
+scanpy2bcs.format_data("/mnt/example/data.loom", "/mnt/example/data.bcs",
+                        input_format="abloom",
+                        barcode_name="observation_id",
+                        feature_name="accession_id",
+                        graph_based="cluster")
 ```
