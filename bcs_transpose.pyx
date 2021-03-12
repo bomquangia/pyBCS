@@ -33,6 +33,7 @@ def light_transpose(bcs_path, partial):
             k = get_partial(m, partial)
             i = 0
             while i < m:
+                pre = time.time()
                 p = np.min([k, m - i])
                 indptr = f["normalizedT"]["indptr"][:]
                 l, r = indptr[i], indptr[i + p]
@@ -47,6 +48,8 @@ def light_transpose(bcs_path, partial):
                 group.create_dataset("indices", data=mat.indices)
                 group.create_dataset("data", data=mat.data)
                 i += p
+                print("Done a circle in %f seconds (%.2f%%)" % (time.time() - pre, i / m * 100), flush=True)
+
     print("Done splitting matrix in %f seconds" % (time.time() - stamp))
 
     stamp = time.time()
