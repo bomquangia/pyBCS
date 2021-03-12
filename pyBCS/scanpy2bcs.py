@@ -38,6 +38,9 @@ class DataObject(ABC):
         self.source = source
         self.graph_based = graph_based
 
+    def __del__(self):
+        self.close()
+
     @abc.abstractclassmethod
     def close(self):
         """Release resources
@@ -1121,7 +1124,7 @@ class LoomData(DataObject):
             self.dimred_keys = dimred_keys
 
     def close(self):
-        pass
+        self.object.close()
 
     def get_n_cells(self):
         return self.object.shape[1]
