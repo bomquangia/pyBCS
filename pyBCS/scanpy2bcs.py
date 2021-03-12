@@ -974,17 +974,15 @@ class SpringData(SubclusterData):
         pass
 
     def get_barcodes(self):
-        full_data = self.get_full_data_names()[0]
-        idx = self.get_sub_cell_indexes(full_data)
-        return np.array(idx).astype("str")
+        with h5py.File(os.path.join(self.source, "counts_norm_sparse_cells.hdf5"), "r") as f:
+            return list(f["gene_ix"].keys())
 
     def get_raw_barcodes(self):
         return None
 
     def get_features(self):
-        with open(os.path.join(self.source, "genes.txt"), "r") as f:
-            lines = f.readlines()
-        return [x[0:-1].rsplit("_", 1)[0] for x in lines]
+        with h5py.File(os.path.join(self.source, "counts_norm_sparse_genes.hdf5"), "r") as f:
+            return list(f["cell_ix"].keys())
 
     def get_raw_features(self):
         return None
@@ -993,17 +991,17 @@ class SpringData(SubclusterData):
         return None
 
     def get_normalized_matrix(self):
-        with np.load(os.path.join(self.source, "counts_norm.npz"), "r") as f:
-            sparse_format = f["format"].astype("str")
-            if sparse_format == "csc":
-                return scipy.sparse.csc_matrix((f["data"], f["indices"], f["indptr"]),
-                                                shape=f["shape"])
-            elif sparse_format == "csr":
-                return scipy.sparse.csr_matrix((f["data"], f["indices"], f["indptr"]),
-                                                shape=f["shape"])\
-                                    .tocsc()
-            else:
-                raise Exception("Format %s is not supported" % sparse_format)
+        indptr = [0]
+        indices = []
+        data = []
+        with h5py.File(os.path.join(self.source, "counts_norm_sparse_genes.hdf5"), "r") as f:
+            for gene in f["counts"]:
+                data.extend(f["counts"][gene][:])
+                indices.extend(f["cell_ix"][gene][:])
+                indptr.append(len(indices))
+        return scipy.sparse.csc_matrix((data, indices, indptr),
+                                        shape=(len(self.get_barcodes()),
+                                                len(self.get_features())))
 
     def get_metadata(self):
         full_data = self.get_full_data_names()[0]
