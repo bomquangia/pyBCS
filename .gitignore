@@ -1,4 +1,8 @@
-*.egg-info
-*.pyc
-dist
-build
+*
+!README.md
+!.gitignore
+!setup.py
+!LICENSE
+!build.sh
+!package.sh
+!pyBCS/*.py
