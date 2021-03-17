@@ -18,7 +18,7 @@ def replace_dataset(f, name, *args, **kwargs):
 
 def light_transpose(bcs_path, partial):
     partial = int(partial)
-    tmp_path = "." + str(uuid.uuid4())
+    tmp_path = os.path.join(os.path.dirname(bcs_path), "." + str(uuid.uuid4()))
     print(tmp_path)
     stamp = time.time()
     with h5py.File(bcs_path, "r") as f:
