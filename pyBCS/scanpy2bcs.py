@@ -657,12 +657,12 @@ class ScanpyData(DataObject):
 
     def get_raw_matrix(self):
         try:
-            return self.object.raw.X[:][:].tocsr()
+            return scipy.sparse.csr_matrix(self.object.raw.X[:][:])
         except:
-            return self.object.layers[self.raw_key].tocsr()
+            return scipy.sparse.csr_matrix(self.object.layers[self.raw_key])
 
     def get_normalized_matrix(self):
-        return self.object.X[:][:].tocsc()
+        return scipy.sparse.csc_matrix(self.object.X[:][:])
 
     def get_metadata(self):
         return self.object.obs
