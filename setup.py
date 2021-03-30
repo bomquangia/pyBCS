@@ -3,9 +3,13 @@ import setuptools
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+version = {}
+with open("pyBCS/version.py", "r") as f:
+    exec(f.read(), version)
+
 setuptools.setup(
     name="pyBCS-bioturing",
-    version="0.3.1",
+    version=version["__version__"],
     author="BioTuring",
     author_email="support@bioturing.com",
     description="Create BioTuring Compressed Study (bcs) file",
