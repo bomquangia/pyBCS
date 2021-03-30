@@ -659,6 +659,7 @@ class ScanpyData(DataObject):
         try:
             return scipy.sparse.csr_matrix(self.object.raw.X[:][:])
         except:
+            print(self.object.layers[self.raw_key])
             return scipy.sparse.csr_matrix(self.object.layers[self.raw_key])
 
     def get_normalized_matrix(self):
