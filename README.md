@@ -6,6 +6,10 @@ This is a python library to create a BioTuring Compressed Study (`bcs`) file fro
 
 Visit our [github](https://github.com/bioturing/pyBCS) for more detail.
 
+## Installation
+
+pip install pyBCS-bioturing
+
 ## Example
 
 ### Scanpy
