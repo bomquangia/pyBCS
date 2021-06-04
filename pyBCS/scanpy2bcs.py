@@ -349,6 +349,7 @@ class DataObject(ABC):
                 matrix = matrix[:, 0:3]
             n_shapes = matrix.shape
 
+            matrix = np.round(np.array(matrix, dtype='float'), 3)
             matrix = [list(map(float, x)) for x in matrix]
             dimred_history = generate_history_object()
             coords = {
