@@ -248,7 +248,7 @@ class DataObject(ABC):
         if cite_seq_M is not None:
             norm_M = scipy.sparse.hstack((norm_M, scipy.sparse.csc_matrix(cite_seq_M)))
             raw_M = scipy.sparse.hstack((raw_M, cite_seq_M)).tocsr()
-            features = np.concatenate([features, cite_seq_proteins])
+            features = np.concatenate([features, ["ADT-" + x for x in cite_seq_proteins]])
         return norm_M, raw_M, barcodes, features, has_raw
 
     def get_synced_data(self):
@@ -708,6 +708,7 @@ class ScanpyData(DataObject):
             cs_columns = [x for x in self.object.obs if x.endswith(cite_seq_suffix)]
             self.cite_seq_data = self.object.obs[cs_columns]
             self.object.obs.drop(cs_columns, axis=1, inplace=True)
+            self.cite_seq_data.columns = [x.replace(cite_seq_suffix, "") for x in self.cite_seq_data]
             print("Detected %d columns of cite-seq data using suffix %s" % (len(cs_columns), cite_seq_suffix), flush=True)
         else:
             self.cite_seq_data = None
