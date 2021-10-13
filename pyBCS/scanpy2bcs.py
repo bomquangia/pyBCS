@@ -706,7 +706,15 @@ class ScanpyData(DataObject):
         self.raw_key = raw_key
         if cite_seq_suffix is not None:
             cs_columns = [x for x in self.object.obs if x.endswith(cite_seq_suffix)]
-            self.cite_seq_data = self.object.obs[cs_columns]
+            self.cite_seq_data = self.object.obs[cs_columns].copy()
+            for x in cs_columns:
+                try:
+                    self.cite_seq_data[x].fillna(0, inplace=True)
+                    self.cite_seq_data[x] = self.cite_seq_data[x].astype(float)
+                except Exception as e:
+                    print("WARNING: Cannot convert %s to cite-seq data due to error: %s" % (x, str(e)))
+                    self.cite_seq_data.drop([x], axis=1, inplace=True)
+            cs_columns = self.cite_seq_data.columns
             self.object.obs.drop(cs_columns, axis=1, inplace=True)
             self.cite_seq_data.columns = [x.replace(cite_seq_suffix, "") for x in self.cite_seq_data]
             print("Detected %d columns of cite-seq data using suffix %s" % (len(cs_columns), cite_seq_suffix), flush=True)
