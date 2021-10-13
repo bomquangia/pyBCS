@@ -1400,7 +1400,7 @@ def add_category_to_first(column, new_category):
 def format_data(source, output_name, input_format="h5ad", raw_key="counts",
                 replace_missing="Unassigned", graph_based=None,
                 barcode_name=None, feature_name=None,
-                dimred_keys=None):
+                dimred_keys=None, cite_seq_suffix=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1421,7 +1421,8 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     """
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
-        data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
+        data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based,
+                                cite_seq_suffix=cite_seq_suffix)
     elif input_format == "spring":
         data_object = SpringData(source, graph_based=graph_based)
     elif input_format == "loom":
