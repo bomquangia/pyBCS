@@ -101,7 +101,8 @@ def light_transpose(bcs_path, partial):
             replace_dataset(g, name="bioturing/shape", data=[m, n])
             replace_dataset(g, name="bioturing/barcodes", data=g["normalizedT"]["features"])
             replace_dataset(g, name="bioturing/features", data=g["normalizedT"]["barcodes"])
-            replace_dataset(g, name="bioturing/feature_type", data=["RNA".encode("utf8")] * m)
+            if "bioturing/feature_type" not in g:
+                replace_dataset(g, name="bioturing/feature_type", data=["RNA".encode("utf8")] * m)
     print("Done joining matrices in %f seconds" % (time.time() - stamp), flush=True)
     os.remove(tmp_path)
 
