@@ -246,8 +246,8 @@ class DataObject(ABC):
             features = raw_features
             cite_seq_M = None
         if cite_seq_M is not None:
-            norm_M = scipy.sparse.hstack((norm_M, scipy.spare.csc_matrix(cite_seq_M)))
-            raw_M = scipy.sparse.hstack((norm_M, cite_seq_M)).tocsr()
+            norm_M = scipy.sparse.hstack((norm_M, scipy.sparse.csc_matrix(cite_seq_M)))
+            raw_M = scipy.sparse.hstack((raw_M, cite_seq_M)).tocsr()
             features = np.concatenate([features, cite_seq_proteins])
         return norm_M, raw_M, barcodes, features, has_raw
 
@@ -492,7 +492,7 @@ class DataObject(ABC):
             print("Writing feature types")
             feature_type = ["RNA"] * (len(features) - len(protein_names)) + ["ADT"] * len(protein_names)
             bioturing_group = dest_hdf5.create_group("bioturing")
-            bioturing_group.craete_dataset("feature_type",
+            bioturing_group.create_dataset("feature_type",
                                     data = encode_strings(feature_type))
 
         print("Writing group \"colsum\"")
