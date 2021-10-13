@@ -2,6 +2,7 @@ import scanpy
 import h5py
 import numpy as np
 import scipy
+from scipy import sparse
 import os
 import json
 import pandas as pd
@@ -94,6 +95,17 @@ class DataObject(ABC):
         """
         pass
 
+    def get_proteins(self):
+        """Gets the protein names
+
+        Returns:
+            If ADT data exists:
+                An array contains the protein names
+            else:
+                None
+        """
+        return None
+
     @abc.abstractclassmethod
     def get_raw_matrix(self):
         """Gets the raw matrix
@@ -138,6 +150,36 @@ class DataObject(ABC):
         features = self.get_features()
         return M, barcodes, features
 
+    def get_ADT_matrix(self):
+        """Gets ADT matrix
+
+        Returns:
+            If ADT data exists then:
+                A numpy array of shape (cells x proteins) contains the ADT matrix
+            else:
+                None
+        """
+        return None
+
+    def get_ADT_data(self):
+        """Gets the ADT data
+
+        Returns:
+            If ADT data exists then:
+                A numpy array of shape (cells x proteins) contains the ADT matrix
+                An array contains the barcode names
+                An array contains the protein names
+            else:
+                None, None, None
+        """
+        M = self.get_ADT_matrix()
+        features = self.get_proteins()
+        if M is None or features is None:
+            return None, None, None
+        else:
+            barcodes = self.get_barcodes() #ADT has the same number of barcodes as normalized data
+            return M, barcodes, features
+
     @abc.abstractclassmethod
     def get_metadata(self):
         """Gets metadata
@@ -164,22 +206,27 @@ class DataObject(ABC):
         """
         return None
 
-    def sync_data(self, norm, raw):
-        """Synces normalized and raw data
+    def sync_data(self, norm, raw, ADT=(None, None, None)):
+        """Synces normalized and raw data, adds ADT data if exists
 
         Keyword arguments:
             norm: A tuple contains normalized data, which is the output of DataObject.get_normalized_data
             raw: A tuple contains raw data, which is the output of DataObject.get_raw_data
+            ADT: ADT data, which is the output of DataObject.get_ADT_data
 
         Returns:
-            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix.
+                If ADT exists then the shape will be (cells x (genes + proteins))
             A scipy.sparse.csr_matrix of shape (cells x genes) contains the synced raw matrix
+                If ADT exists then the shape will be (cells x (genes + proteins))
             An array contains the synced barcode names
             An array contains the synced gene names
+                If ADT exists then the gene names also includes protein names
             A boolean value indicates that if raw data is available
         """
         norm_M, norm_barcodes, norm_features = norm
         raw_M, raw_barcodes, raw_features = raw
+        ADT_M, ADT_barcodes, ADT_proteins = ADT
         has_raw = True
         if raw_M is None:
             print("Raw data is not available, using normalized data as raw data", flush=True)
@@ -193,13 +240,19 @@ class DataObject(ABC):
             features = norm_features
         else:
             print("Shape of normalized data (%d, %d) does not equal shape of raw data (%d %d), using raw data as normalized data" % (norm_M.shape + raw_M.shape), flush=True)
+            print("ADT data, if there is, will not be included")
             norm_M = raw_M.tocsc()
             barcodes = raw_barcodes
             features = raw_features
+            ADT_M = None
+        if ADT_M is not None:
+            norm_M = scipy.sparse.hstack((norm_M, scipy.spare.csc_matrix(ADT_M)))
+            raw_M = scipy.sparse.hstack((norm_M, ADT_M)).tocsr()
+            features = np.concatenate([features, ADT_proteins])
         return norm_M, raw_M, barcodes, features, has_raw
 
     def get_synced_data(self):
-        """Gets synced version of normalized and raw data
+        """Gets synced version of normalized and raw data, adds ADT if exists
 
         Returns:
             A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
@@ -208,14 +261,14 @@ class DataObject(ABC):
             An array contains the synced gene names
             A boolean value indicates that if raw data is available
         """
-        norm_M, norm_barcodes, norm_features = self.get_normalized_data()
+        normalized_data = self.get_normalized_data()
         try:
-            raw_M, raw_barcodes, raw_features = self.get_raw_data()
+            raw_data = self.get_raw_data()
         except Exception as e:
             print("Cannot read raw data: %s" % str(e))
-            raw_M = raw_barcodes = raw_features = None
-        return self.sync_data((norm_M, norm_barcodes, norm_features),
-                                    (raw_M, raw_barcodes, raw_features))
+            raw_data = (None, None, None)
+        ADT_data = self.get_ADT_data()
+        return self.sync_data(normalized_data, raw_data, ADT_data)
 
     def write_metadata(self, zobj, meta_path, replace_missing="Unassigned"):
         """Writes metadata to zip file
