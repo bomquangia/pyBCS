@@ -683,7 +683,7 @@ class DataObject(ABC):
         return study_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, graph_based, raw_key="counts"):
+    def __init__(self, source, graph_based, raw_key="counts", cite_seq_suffix=None):
         """Constructor of ScanpyData object
 
         Keyword arguments:
@@ -696,6 +696,13 @@ class ScanpyData(DataObject):
         DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
+        if cite_seq_suffix is not None:
+            cs_columns = [x for x in self.object.obs if x.endswith(cite_seq_suffix)]
+            self.cite_seq_data = self.object.obs[cs_columns]
+            self.object.obs.drop(cs_columns, axis=1, inplace=True)
+            print("Detected %d columns of cite-seq data using suffix %s" % (len(cs_columns), cite_seq_suffix), flush=True)
+        else:
+            self.cite_seq_data = None
 
     def close(self):
         pass
@@ -714,6 +721,18 @@ class ScanpyData(DataObject):
             return self.object.raw.var.index
         except:
             return self.get_features()
+
+    def get_proteins(self):
+        if self.cite_seq_data is None:
+            return None
+        else:
+            return self.cite_seq_data.columns
+
+    def get_cite_seq_matrix(self):
+        if self.cite_seq_data is None:
+            return None
+        else:
+            return self.cite_seq_data.to_numpy()
 
     def get_raw_matrix(self):
         try:
