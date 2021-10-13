@@ -487,6 +487,14 @@ class DataObject(ABC):
         normalizedT_group.create_dataset("indptr", data=norm_M.indptr)
         normalizedT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 
+        protein_names = self.get_proteins()
+        if protein_names is not None:
+            print("Writing feature types")
+            feature_type = ["RNA"] * (len(features) - len(protein_names)) + ["ADT"] * len(protein_names)
+            bioturing_group = dest_hdf5.create_group("bioturing")
+            bioturing_group.craete_dataset("feature_type",
+                                    data = encode_strings(feature_type))
+
         print("Writing group \"colsum\"")
         norm_M = norm_M.tocsr()
         n_cells = len(barcodes)
