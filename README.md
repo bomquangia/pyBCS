@@ -24,7 +24,7 @@ If your data has antibody-derived tags (ADT), you can put ADT expression data in
 
 ```python
 scanpy2bcs.format_data("/mnt/example/data.h5ad", "/mnt/example/data.bcs",
-                       input_format="h5ad", graph_based="louvain", cite_seq_suffix="TotalSeqC")
+                       input_format="h5ad", graph_based="louvain", cite_seq_suffix="_TotalSeqC")
 ```
 
 ### SPRING
