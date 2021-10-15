@@ -20,6 +20,12 @@ scanpy2bcs.format_data("/mnt/example/data.h5ad", "/mnt/example/data.bcs",
                         input_format="h5ad", graph_based="louvain")
 ```
 
+If your data has antibody-derived tags (ADT), you can put ADT expression data in the `obs` as cell metadata with a distinguishable suffix. For example, ADT expression of `CD45` will be `CD45_TotalSeqC`. In such cases, you can declare `cite_seq_suffix` when using `format_data()`:
+
+```python
+scanpy2bcs.format_data("/mnt/example/data.h5ad", "/mnt/example/data.bcs",
+                       input_format="h5ad", graph_based="louvain", cite_seq_suffix="TotalSeqC")
+```
 
 ### SPRING
 
