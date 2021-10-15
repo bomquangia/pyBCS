@@ -2,6 +2,7 @@ import scanpy
 import h5py
 import numpy as np
 import scipy
+from scipy import sparse
 import os
 import json
 import pandas as pd
@@ -94,6 +95,17 @@ class DataObject(ABC):
         """
         pass
 
+    def get_proteins(self):
+        """Gets the protein names
+
+        Returns:
+            If cite-seq data exists:
+                An array contains the protein names
+            else:
+                None
+        """
+        return None
+
     @abc.abstractclassmethod
     def get_raw_matrix(self):
         """Gets the raw matrix
@@ -138,6 +150,36 @@ class DataObject(ABC):
         features = self.get_features()
         return M, barcodes, features
 
+    def get_cite_seq_matrix(self):
+        """Gets cite-seq matrix
+
+        Returns:
+            If cite-seq data exists then:
+                A numpy array of shape (cells x proteins) contains the cite-seq matrix
+            else:
+                None
+        """
+        return None
+
+    def get_cite_seq_data(self):
+        """Gets the cite-seq data
+
+        Returns:
+            If cite-seq data exists then:
+                A numpy array of shape (cells x proteins) contains the cite-seq matrix
+                An array contains the barcode names
+                An array contains the protein names
+            else:
+                None, None, None
+        """
+        M = self.get_cite_seq_matrix()
+        features = self.get_proteins()
+        if M is None or features is None:
+            return None, None, None
+        else:
+            barcodes = self.get_barcodes() #cite-seq has the same number of barcodes as normalized data
+            return M, barcodes, features
+
     @abc.abstractclassmethod
     def get_metadata(self):
         """Gets metadata
@@ -164,22 +206,27 @@ class DataObject(ABC):
         """
         return None
 
-    def sync_data(self, norm, raw):
-        """Synces normalized and raw data
+    def sync_data(self, norm, raw, cite_seq=(None, None, None)):
+        """Synces normalized and raw data, adds cite-seq data if exists
 
         Keyword arguments:
             norm: A tuple contains normalized data, which is the output of DataObject.get_normalized_data
             raw: A tuple contains raw data, which is the output of DataObject.get_raw_data
+            cite_seq: cite-seq data, which is the output of DataObject.get_cite_seq_data
 
         Returns:
-            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
+            A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix.
+                If cite-seq exists then the shape will be (cells x (genes + proteins))
             A scipy.sparse.csr_matrix of shape (cells x genes) contains the synced raw matrix
+                If cite-seq exists then the shape will be (cells x (genes + proteins))
             An array contains the synced barcode names
             An array contains the synced gene names
+                If cite-seq exists then the gene names also includes protein names
             A boolean value indicates that if raw data is available
         """
         norm_M, norm_barcodes, norm_features = norm
         raw_M, raw_barcodes, raw_features = raw
+        cite_seq_M, cite_seq_barcodes, cite_seq_proteins = cite_seq
         has_raw = True
         if raw_M is None:
             print("Raw data is not available, using normalized data as raw data", flush=True)
@@ -193,13 +240,19 @@ class DataObject(ABC):
             features = norm_features
         else:
             print("Shape of normalized data (%d, %d) does not equal shape of raw data (%d %d), using raw data as normalized data" % (norm_M.shape + raw_M.shape), flush=True)
+            print("Cite-seq data, if there is, will not be included")
             norm_M = raw_M.tocsc()
             barcodes = raw_barcodes
             features = raw_features
+            cite_seq_M = None
+        if cite_seq_M is not None:
+            norm_M = scipy.sparse.hstack((norm_M, scipy.sparse.csc_matrix(cite_seq_M)))
+            raw_M = scipy.sparse.hstack((raw_M, cite_seq_M)).tocsr()
+            features = np.concatenate([features, ["ADT-" + x for x in cite_seq_proteins]])
         return norm_M, raw_M, barcodes, features, has_raw
 
     def get_synced_data(self):
-        """Gets synced version of normalized and raw data
+        """Gets synced version of normalized and raw data, adds cite-seq if exists
 
         Returns:
             A scipy.sparse.csc_matrix of shape (cells x genes) contains the synced normalized matrix
@@ -208,14 +261,14 @@ class DataObject(ABC):
             An array contains the synced gene names
             A boolean value indicates that if raw data is available
         """
-        norm_M, norm_barcodes, norm_features = self.get_normalized_data()
+        normalized_data = self.get_normalized_data()
         try:
-            raw_M, raw_barcodes, raw_features = self.get_raw_data()
+            raw_data = self.get_raw_data()
         except Exception as e:
             print("Cannot read raw data: %s" % str(e))
-            raw_M = raw_barcodes = raw_features = None
-        return self.sync_data((norm_M, norm_barcodes, norm_features),
-                                    (raw_M, raw_barcodes, raw_features))
+            raw_data = (None, None, None)
+        cite_seq_data = self.get_cite_seq_data()
+        return self.sync_data(normalized_data, raw_data, cite_seq_data)
 
     def write_metadata(self, zobj, meta_path, replace_missing="Unassigned"):
         """Writes metadata to zip file
@@ -434,6 +487,14 @@ class DataObject(ABC):
         normalizedT_group.create_dataset("indptr", data=norm_M.indptr)
         normalizedT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 
+        protein_names = self.get_proteins()
+        if protein_names is not None:
+            print("Writing feature types")
+            feature_type = ["RNA"] * (len(features) - len(protein_names)) + ["ADT"] * len(protein_names)
+            bioturing_group = dest_hdf5.create_group("bioturing")
+            bioturing_group.create_dataset("feature_type",
+                                    data = encode_strings(feature_type))
+
         print("Writing group \"colsum\"")
         norm_M = norm_M.tocsr()
         n_cells = len(barcodes)
@@ -630,7 +691,7 @@ class DataObject(ABC):
         return study_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, graph_based, raw_key="counts"):
+    def __init__(self, source, graph_based, raw_key="counts", cite_seq_suffix=None):
         """Constructor of ScanpyData object
 
         Keyword arguments:
@@ -643,6 +704,22 @@ class ScanpyData(DataObject):
         DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
+        if cite_seq_suffix is not None:
+            cs_columns = [x for x in self.object.obs if x.endswith(cite_seq_suffix)]
+            self.cite_seq_data = self.object.obs[cs_columns].copy()
+            for x in cs_columns:
+                try:
+                    self.cite_seq_data[x].fillna(0, inplace=True)
+                    self.cite_seq_data[x] = self.cite_seq_data[x].astype(float)
+                except Exception as e:
+                    print("WARNING: Cannot convert %s to cite-seq data due to error: %s" % (x, str(e)))
+                    self.cite_seq_data.drop([x], axis=1, inplace=True)
+            cs_columns = self.cite_seq_data.columns
+            self.object.obs.drop(cs_columns, axis=1, inplace=True)
+            self.cite_seq_data.columns = [x.replace(cite_seq_suffix, "") for x in self.cite_seq_data]
+            print("Detected %d columns of cite-seq data using suffix %s" % (len(cs_columns), cite_seq_suffix), flush=True)
+        else:
+            self.cite_seq_data = None
 
     def close(self):
         pass
@@ -661,6 +738,18 @@ class ScanpyData(DataObject):
             return self.object.raw.var.index
         except:
             return self.get_features()
+
+    def get_proteins(self):
+        if self.cite_seq_data is None:
+            return None
+        else:
+            return self.cite_seq_data.columns
+
+    def get_cite_seq_matrix(self):
+        if self.cite_seq_data is None:
+            return None
+        else:
+            return self.cite_seq_data.to_numpy()
 
     def get_raw_matrix(self):
         try:
@@ -1320,7 +1409,7 @@ def add_category_to_first(column, new_category):
 def format_data(source, output_name, input_format="h5ad", raw_key="counts",
                 replace_missing="Unassigned", graph_based=None,
                 barcode_name=None, feature_name=None,
-                dimred_keys=None):
+                dimred_keys=None, cite_seq_suffix=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1341,7 +1430,8 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     """
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
-        data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based)
+        data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based,
+                                cite_seq_suffix=cite_seq_suffix)
     elif input_format == "spring":
         data_object = SpringData(source, graph_based=graph_based)
     elif input_format == "loom":
