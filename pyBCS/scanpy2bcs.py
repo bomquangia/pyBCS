@@ -308,9 +308,11 @@ class DataObject(ABC):
                 names = "NaN"
                 _type = "numeric"
             elif metaname in category_meta:
-                if replace_missing not in metadata[metaname].cat.categories:
-                    metadata[metaname] = add_category_to_first(metadata[metaname],
-                                                                new_category=replace_missing)
+                if replace_missing in metadata[metaname].cat.categories:
+                    metadata[metaname].replace(replace_missing, np.nan,
+                                                inplace=True)
+                metadata[metaname] = add_category_to_first(metadata[metaname],
+                                                            new_category=replace_missing)
                 metadata[metaname].fillna(replace_missing, inplace=True)
 
                 value_to_index = {}
