@@ -1,4 +1,5 @@
 import scanpy
+from anndata import AnnData
 import h5py
 import numpy as np
 import scipy
@@ -734,7 +735,10 @@ class ScanpyData(DataObject):
         if graph_based is None:
             graph_based = SCANPYDATA_DEFAULT_GRAPH_BASED
         DataObject.__init__(self, source=source, graph_based=graph_based)
-        self.object = scanpy.read_h5ad(source, "r")
+        if isinstance(source, AnnData):
+            self.object = source
+        else:
+            self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
         self.pca_key = pca_key
         if cite_seq_suffix is not None:
