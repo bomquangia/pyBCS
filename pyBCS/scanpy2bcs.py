@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 import abc
 import loompy
 from pathlib import Path
+import tempfile 
 BBROWSER_VERSION = "2.7.38"
 DEFAULT_BARCODE_NAME = ["index", "_index", "CellID", "observation_id"]
 DEFAULT_FEATURE_NAME = ["index", "_index", "Gene", "accession_id"]
@@ -198,6 +199,15 @@ class DataObject(ABC):
         """
         pass
 
+    def get_pca_result(self):
+        """Gets pca result
+
+        Returns:
+            A numpy.ndarray of shape (cells x dimensions) that contains the pca result.
+                If there is no pca result then returns None.
+        """
+        return None
+
     def get_misc(self):
         """Gets general infomation of study
 
@@ -308,9 +318,11 @@ class DataObject(ABC):
                 names = "NaN"
                 _type = "numeric"
             elif metaname in category_meta:
-                if replace_missing not in metadata[metaname].cat.categories:
-                    metadata[metaname] = add_category_to_first(metadata[metaname],
-                                                                new_category=replace_missing)
+                if replace_missing in metadata[metaname].cat.categories:
+                    metadata[metaname].replace(replace_missing, np.nan,
+                                                inplace=True)
+                metadata[metaname] = add_category_to_first(metadata[metaname],
+                                                            new_category=replace_missing)
                 metadata[metaname].fillna(replace_missing, inplace=True)
 
                 value_to_index = {}
@@ -633,6 +645,21 @@ class DataObject(ABC):
         with zobj.open(os.path.join(bcs_info_path, "bcs_info.json"), "w") as z:
             z.write(json.dumps(bcs_info).encode("utf8"))
 
+    def write_pca(self, zobj, pca_path):
+        pca_result = self.get_pca_result()
+        if pca_result is None:
+            print("WARNING: PCA result is not available")
+            return
+
+        pca_result = pca_result.T
+        print("Found PCA result with key %s" % self.pca_key)
+        print("Writing pca result...")
+        with tempfile.NamedTemporaryFile() as tmp:
+            with h5py.File(tmp, "w") as f:
+                f.create_dataset("pca", data=pca_result)
+
+            zobj.write(tmp.name, pca_path)
+
     def write_bcs_to_file(self, zobj, study_name, replace_missing):
         """Write data to a given zobj file as bcs format
 
@@ -647,6 +674,7 @@ class DataObject(ABC):
         self.write_metadata(zobj, meta_path=self.get_metadata_path(study_name),
                             replace_missing=replace_missing)
         self.write_dimred(zobj, dimred_path=self.get_dimred_path(study_name))
+        self.write_pca(zobj, pca_path=self.get_pca_path(study_name))
         has_raw = self.write_main_folder(zobj,
                                     main_path=self.get_main_path(study_name))
         unit = "umi" if has_raw else "lognorm"
@@ -684,6 +712,9 @@ class DataObject(ABC):
     def get_dimred_path(self, study_name):
         return os.path.join(study_name, "main", "dimred")
 
+    def get_pca_path(self, study_name):
+        return os.path.join(study_name, "main", "pca_result.hdf5")
+
     def get_main_path(self, study_name):
         return os.path.join(study_name, "main")
 
@@ -691,7 +722,8 @@ class DataObject(ABC):
         return study_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, graph_based, raw_key="counts", cite_seq_suffix=None):
+    def __init__(self, source, graph_based, raw_key="counts", pca_key="X_pca",
+                    cite_seq_suffix=None):
         """Constructor of ScanpyData object
 
         Keyword arguments:
@@ -704,6 +736,7 @@ class ScanpyData(DataObject):
         DataObject.__init__(self, source=source, graph_based=graph_based)
         self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
+        self.pca_key = pca_key
         if cite_seq_suffix is not None:
             cs_columns = [x for x in self.object.obs if x.endswith(cite_seq_suffix)]
             self.cite_seq_data = self.object.obs[cs_columns].copy()
@@ -771,6 +804,9 @@ class ScanpyData(DataObject):
                 continue
             res[dimred] = self.object.obsm[dimred]
         return res
+
+    def get_pca_result(self):
+        return self.object.obsm.get(self.pca_key)
 
 class SubclusterData(DataObject):
     @abc.abstractclassmethod
