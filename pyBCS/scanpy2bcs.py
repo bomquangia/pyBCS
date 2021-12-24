@@ -28,7 +28,9 @@ SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
 LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
 
 class DataObject(ABC):
-    def __init__(self, source, graph_based):
+    def __init__(self, source, graph_based, title="Created by pyBCS",
+                    species="human",
+                    unit=None):
         """Constructor of DataObject class
 
         Keyword arguments:
@@ -38,8 +40,27 @@ class DataObject(ABC):
         Returns:
             None
         """
+        self.allowed_species =  ["human", "mouse", "rat", "zebrafish", "fly",
+                                    "m_fascicularis",
+                                    "other"]
+        self.allowed_units = ["umi", "read", "cpm", "tpm", "rpkm", "fpkm",
+                                "lognorm",
+                                "unknown"]
         self.source = source
         self.graph_based = graph_based
+        self.title = title
+        if species not in self.allowed_species:
+            raise Exception("ERROR: %s is not in the list of allowed species: "
+                                % species,
+                            self.allowed_species)
+
+        if unit is not None:
+            if unit not in self.allowed_units:
+                raise Exception("ERROR: %s is not in the list of allowed units: "
+                                    % unit,
+                                    self.allowed_units)
+        self.species = species
+        self.unit = unit
 
     def __del__(self):
         self.close()
@@ -598,7 +619,7 @@ class DataObject(ABC):
         os.remove(tmp_matrix)
         return has_raw
 
-    def write_runinfo(self, zobj, study_name, runinfo_path, unit):
+    def write_runinfo(self, zobj, study_name, runinfo_path):
         """Writes run_info.json
 
         Keyword arguments:
@@ -615,7 +636,7 @@ class DataObject(ABC):
         runinfo_history["hash_id"] = study_name
         date = time.time() * 1000
         run_info = {
-            "species":"human",
+            "species":self.species,
             "hash_id":study_name,
             "version":16,
             "n_cell":self.get_n_cells(),
@@ -626,9 +647,9 @@ class DataObject(ABC):
             "n_batch":1,
             "platform":"unknown",
             "omics":["RNA"],
-            "title":["Created by bbrowser converter"],
+            "title":[self.title],
             "history":[runinfo_history],
-            "unit":unit
+            "unit":self.unit
         }
         misc = self.get_misc()
         if misc is not None:
@@ -678,10 +699,10 @@ class DataObject(ABC):
         self.write_pca(zobj, pca_path=self.get_pca_path(study_name))
         has_raw = self.write_main_folder(zobj,
                                     main_path=self.get_main_path(study_name))
-        unit = "umi" if has_raw else "lognorm"
+        if self.unit is None:
+            self.unit = "umi" if has_raw else "lornorm"
         self.write_runinfo(zobj, study_name=study_name,
-                            runinfo_path=self.get_runinfo_path(study_name),
-                            unit=unit)
+                            runinfo_path=self.get_runinfo_path(study_name))
         self.write_bcs_info(zobj, bcs_info_path=study_name)
 
     def write_bcs(self, study_name, output_name, replace_missing="Unassigned"):
@@ -723,7 +744,11 @@ class DataObject(ABC):
         return study_name
 
 class ScanpyData(DataObject):
-    def __init__(self, source, graph_based, raw_key="counts", pca_key="X_pca",
+    def __init__(self, source, graph_based, title="Created by pyBCS",
+                    species="human",
+                    unit=None,
+                    raw_key="counts",
+                    pca_key="X_pca",
                     cite_seq_suffix=None):
         """Constructor of ScanpyData object
 
@@ -734,7 +759,8 @@ class ScanpyData(DataObject):
         """
         if graph_based is None:
             graph_based = SCANPYDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source=source, graph_based=graph_based)
+        DataObject.__init__(self, source=source, graph_based=graph_based,
+                            title=title, species=species, unit=unit)
         if isinstance(source, AnnData):
             self.object = source
         else:
@@ -1087,7 +1113,9 @@ class SubclusterData(DataObject):
         return os.path.join(study_name, "sub", sub_name)
 
 class SpringData(SubclusterData):
-    def __init__(self, source, graph_based):
+    def __init__(self, source, graph_based, title="Created by pyBCS",
+                    species="human",
+                    unit=None):
         """Constructor of SpringData object
 
         Keyword arguments:
@@ -1096,7 +1124,8 @@ class SpringData(SubclusterData):
         """
         if graph_based is None:
             graph_based = SPRINGDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source=source, graph_based=graph_based)
+        DataObject.__init__(self, source=source, graph_based=graph_based,
+                            title=title, species=species, unit=unit)
 
     def close(self):
         pass
@@ -1219,12 +1248,16 @@ class SpringData(SubclusterData):
 
 class LoomData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts",
-                        barcode_name=DEFAULT_BARCODE_NAME,
-                        feature_name=DEFAULT_FEATURE_NAME,
-                        dimred_keys=DEFAULT_DIMRED_KEYS):
+                    title = "Created by pyBCS",
+                    species="human",
+                    unit=None,
+                    barcode_name=DEFAULT_BARCODE_NAME,
+                    feature_name=DEFAULT_FEATURE_NAME,
+                    dimred_keys=DEFAULT_DIMRED_KEYS):
         if graph_based is None:
             graph_based = LOOMDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source, graph_based)
+        DataObject.__init__(self, source, graph_based, title=title,
+                                species=species, unit=unit)
         self.raw_key = raw_key
         self.object = loompy.connect(source, "r")
         if barcode_name is None:
@@ -1300,9 +1333,13 @@ class LoomData(DataObject):
 
 class AbloomData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts",
-                        barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
-                        feature_name=DEFAULT_ABLOOM_FEATURE_NAME):
-        DataObject.__init__(self, source, graph_based)
+                    title="Created by pyBCS",
+                    species="human",
+                    unit=None,
+                    barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
+                    feature_name=DEFAULT_ABLOOM_FEATURE_NAME):
+        DataObject.__init__(self, source, graph_based, title=title,
+                            species=species, unit=unit)
         self.raw_key = raw_key
         if barcode_name is None:
             barcode_name = DEFAULT_ABLOOM_BARCODE_NAME
@@ -1447,9 +1484,15 @@ def add_category_to_first(column, new_category):
     return column
 
 def format_data(source, output_name, input_format="h5ad", raw_key="counts",
-                replace_missing="Unassigned", graph_based=None,
-                barcode_name=None, feature_name=None,
-                dimred_keys=None, cite_seq_suffix=None):
+                replace_missing="Unassigned",
+                graph_based=None,
+                title="Created by pyBCS",
+                species="human",
+                unit="umi",
+                barcode_name=None,
+                feature_name=None,
+                dimred_keys=None,
+                cite_seq_suffix=None):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1471,16 +1514,25 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based,
-                                cite_seq_suffix=cite_seq_suffix)
+                                cite_seq_suffix=cite_seq_suffix,
+                                title=title,
+                                species=species,
+                                unit=unit)
     elif input_format == "spring":
-        data_object = SpringData(source, graph_based=graph_based)
+        data_object = SpringData(source, graph_based=graph_based, title=title,
+                                    species=species,
+                                    unit=unit)
     elif input_format == "loom":
-        data_object = LoomData(source, graph_based=graph_based,
+        data_object = LoomData(source, graph_based=graph_based, title=title,
+                                species=species,
+                                unit=unit,
                                 barcode_name=barcode_name,
                                 feature_name=feature_name,
                                 dimred_keys=dimred_keys)
     elif input_format == "abloom":
-        data_object = AbloomData(source, graph_based=graph_based,
+        data_object = AbloomData(source, graph_based=graph_based, title=title,
+                                    species=species,
+                                    unit=unit,
                                     barcode_name=barcode_name,
                                     feature_name=feature_name)
     else:
