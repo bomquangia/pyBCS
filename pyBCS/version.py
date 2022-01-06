@@ -12,7 +12,7 @@ except NameError:
     base_dir = None
 
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 if base_dir is not None and os.path.exists(os.path.join(base_dir, ".commit")):
     with open(os.path.join(base_dir, ".commit")) as fp:
