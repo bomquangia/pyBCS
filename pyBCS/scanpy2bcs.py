@@ -389,7 +389,7 @@ class DataObject(ABC):
                 "clusterName":content[uid]["clusterName"],
                 "clusterLength":content[uid]["clusterLength"],
                 "history":content[uid]["history"],
-                "type":[content[uid]["type"]]
+                "type":content[uid]["type"]
             }
             with zobj.open(os.path.join(meta_path, "%s.json" % uid), "w") as z:
                 z.write(json.dumps(obj).encode("utf8"))
