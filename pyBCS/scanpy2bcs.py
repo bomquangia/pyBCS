@@ -28,9 +28,7 @@ SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
 LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
 
 class DataObject(ABC):
-    def __init__(self, source, graph_based, title="Created by pyBCS",
-                    species="human",
-                    unit=None):
+    def __init__(self, source, graph_based, **kwargs):
         """Constructor of DataObject class
 
         Keyword arguments:
@@ -46,6 +44,12 @@ class DataObject(ABC):
         self.allowed_units = ["umi", "read", "cpm", "tpm", "rpkm", "fpkm",
                                 "lognorm",
                                 "unknown"]
+        self.title = kwargs.get("title", "Created by pyBCS")
+        self.species = kwargs.get("species", "human")
+        self.unit = kwargs.get("unit")
+        self.platform = kwargs.get("platform", "Unknown")
+        self.omics = kwargs.get("omics", ["RNA"])
+
         self.source = source
         self.graph_based = graph_based
         self.title = title
@@ -646,8 +650,8 @@ class DataObject(ABC):
             "matrix_type":"single",
             "n_batch":1,
             "platform":"unknown",
-            "omics":["RNA"],
-            "title":[self.title],
+            "omics":self.omics,
+            "title":self.title,
             "history":[runinfo_history],
             "unit":self.unit
         }
@@ -1486,13 +1490,11 @@ def add_category_to_first(column, new_category):
 def format_data(source, output_name, input_format="h5ad", raw_key="counts",
                 replace_missing="Unassigned",
                 graph_based=None,
-                title="Created by pyBCS",
-                species="human",
-                unit="umi",
                 barcode_name=None,
                 feature_name=None,
                 dimred_keys=None,
-                cite_seq_suffix=None):
+                cite_seq_suffix=None,
+                **kwargs):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1515,26 +1517,20 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based,
                                 cite_seq_suffix=cite_seq_suffix,
-                                title=title,
-                                species=species,
-                                unit=unit)
+                                **kwargs)
     elif input_format == "spring":
-        data_object = SpringData(source, graph_based=graph_based, title=title,
-                                    species=species,
-                                    unit=unit)
+        data_object = SpringData(source, graph_based=graph_based, **kwargs)
     elif input_format == "loom":
-        data_object = LoomData(source, graph_based=graph_based, title=title,
-                                species=species,
-                                unit=unit,
+        data_object = LoomData(source, graph_based=graph_based,
                                 barcode_name=barcode_name,
                                 feature_name=feature_name,
-                                dimred_keys=dimred_keys)
+                                dimred_keys=dimred_keys,
+                                **kwargs)
     elif input_format == "abloom":
-        data_object = AbloomData(source, graph_based=graph_based, title=title,
-                                    species=species,
-                                    unit=unit,
+        data_object = AbloomData(source, graph_based=graph_based,
                                     barcode_name=barcode_name,
-                                    feature_name=feature_name)
+                                    feature_name=feature_name,
+                                    **kwargs)
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(study_name=study_id, output_name=output_name,
