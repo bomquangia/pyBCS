@@ -1,4 +1,5 @@
 import scanpy
+from anndata import AnnData
 import h5py
 import numpy as np
 import scipy
@@ -27,7 +28,8 @@ SPRINGDATA_DEFAULT_GRAPH_BASED = "ClustersWT"
 LOOMDATA_DEFAULT_GRAPH_BASED = "ClusterID"
 
 class DataObject(ABC):
-    def __init__(self, source, graph_based):
+    def __init__(self, source, graph_based, replace_missing="Unassigned",
+                    **kwargs):
         """Constructor of DataObject class
 
         Keyword arguments:
@@ -37,8 +39,32 @@ class DataObject(ABC):
         Returns:
             None
         """
+        self.study_id = str(uuid.uuid4())
+        self.replace_missing = replace_missing
+
+        allowed_species =  ["human", "mouse", "rat", "zebrafish", "fly",
+                                    "m_fascicularis",
+                                    "other"]
+        allowed_units = ["umi", "read", "cpm", "tpm", "rpkm", "fpkm", "lognorm",
+                                "unknown"]
+        self.title = kwargs.get("title", "Created by pyBCS")
+        self.species = kwargs.get("species", "human")
+        self.unit = kwargs.get("unit")
+        self.platform = kwargs.get("platform", "Unknown")
+        self.omics = kwargs.get("omics", ["RNA"])
+
         self.source = source
         self.graph_based = graph_based
+        if self.species not in allowed_species:
+            raise Exception("ERROR: %s is not in the list of allowed species: "
+                                % self.species,
+                            allowed_species)
+
+        if self.unit is not None:
+            if self.unit not in allowed_units:
+                raise Exception("ERROR: %s is not in the list of allowed units: "
+                                    % self.unit,
+                                    allowed_units)
 
     def __del__(self):
         self.close()
@@ -280,13 +306,12 @@ class DataObject(ABC):
         cite_seq_data = self.get_cite_seq_data()
         return self.sync_data(normalized_data, raw_data, cite_seq_data)
 
-    def write_metadata(self, zobj, meta_path, replace_missing="Unassigned"):
+    def write_metadata(self, zobj, meta_path):
         """Writes metadata to zip file
 
         Keyword arguments:
             zobj: The opened-for-write zip file
             meta_path: Path where metadata will be written
-            replace_missing: A string indicates what missing values in metadata should be replaced with
 
         Returns:
             None
@@ -318,12 +343,12 @@ class DataObject(ABC):
                 names = "NaN"
                 _type = "numeric"
             elif metaname in category_meta:
-                if replace_missing in metadata[metaname].cat.categories:
-                    metadata[metaname].replace(replace_missing, np.nan,
+                if self.replace_missing in metadata[metaname].cat.categories:
+                    metadata[metaname].replace(self.replace_missing, np.nan,
                                                 inplace=True)
                 metadata[metaname] = add_category_to_first(metadata[metaname],
-                                                            new_category=replace_missing)
-                metadata[metaname].fillna(replace_missing, inplace=True)
+                                                            new_category=self.replace_missing)
+                metadata[metaname].fillna(self.replace_missing, inplace=True)
 
                 value_to_index = {}
                 for x, y in enumerate(metadata[metaname].cat.categories):
@@ -597,25 +622,13 @@ class DataObject(ABC):
         os.remove(tmp_matrix)
         return has_raw
 
-    def write_runinfo(self, zobj, study_name, runinfo_path, unit):
-        """Writes run_info.json
-
-        Keyword arguments:
-            zobj: The opened-for-write zip file
-            study_name: Name of the study
-            runinfo_path: Path in the zip object where run_info will be written to
-            unit: Unit of the study
-
-        Returns:
-            None
-        """
-        print("Writing run_info.json", flush=True)
+    def create_runinfo(self):
         runinfo_history = generate_history_object()
-        runinfo_history["hash_id"] = study_name
+        runinfo_history["hash_id"] = self.study_id
         date = time.time() * 1000
         run_info = {
-            "species":"human",
-            "hash_id":study_name,
+            "species":self.species,
+            "hash_id":self.study_id,
             "version":16,
             "n_cell":self.get_n_cells(),
             "modified_date":date,
@@ -624,16 +637,33 @@ class DataObject(ABC):
             "matrix_type":"single",
             "n_batch":1,
             "platform":"unknown",
-            "omics":["RNA"],
-            "title":["Created by bbrowser converter"],
+            "omics":self.omics,
+            "title":self.title,
             "history":[runinfo_history],
-            "unit":unit
+            "unit":self.unit
         }
         misc = self.get_misc()
         if misc is not None:
             run_info["misc"] = misc
+        return run_info
+
+    def get_runinfo(self):
+        return self.run_info
+
+    def write_runinfo(self, zobj, runinfo_path):
+        """Writes run_info.json
+
+        Keyword arguments:
+            zobj: The opened-for-write zip file
+            runinfo_path: Path in the zip object where run_info will be written to
+            unit: Unit of the study
+
+        Returns:
+            None
+        """
+        print("Writing run_info.json", flush=True)
         with zobj.open(os.path.join(runinfo_path, "run_info.json"), "w") as z:
-            z.write(json.dumps(run_info).encode("utf8"))
+            z.write(json.dumps(self.run_info).encode("utf8"))
 
     def write_bcs_info(self, zobj, bcs_info_path):
         version = {}
@@ -660,70 +690,65 @@ class DataObject(ABC):
 
             zobj.write(tmp.name, pca_path)
 
-    def write_bcs_to_file(self, zobj, study_name, replace_missing):
+    def write_bcs_to_file(self, zobj):
         """Write data to a given zobj file as bcs format
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            study_name: Name of the study
-            replace_missing: A string indicates what missing values in metadata should be replaced with
 
         Returns:
             None
         """
-        self.write_metadata(zobj, meta_path=self.get_metadata_path(study_name),
-                            replace_missing=replace_missing)
-        self.write_dimred(zobj, dimred_path=self.get_dimred_path(study_name))
-        self.write_pca(zobj, pca_path=self.get_pca_path(study_name))
+        self.write_metadata(zobj, meta_path=self.get_metadata_path())
+        self.write_dimred(zobj, dimred_path=self.get_dimred_path())
+        self.write_pca(zobj, pca_path=self.get_pca_path())
         has_raw = self.write_main_folder(zobj,
-                                    main_path=self.get_main_path(study_name))
-        unit = "umi" if has_raw else "lognorm"
-        self.write_runinfo(zobj, study_name=study_name,
-                            runinfo_path=self.get_runinfo_path(study_name),
-                            unit=unit)
-        self.write_bcs_info(zobj, bcs_info_path=study_name)
+                                    main_path=self.get_main_path())
+        if self.unit is None:
+            self.unit = "umi" if has_raw else "lornorm"
+        self.write_runinfo(zobj, runinfo_path=self.get_runinfo_path())
+        self.write_bcs_info(zobj, bcs_info_path=self.study_id)
 
-    def write_bcs(self, study_name, output_name, replace_missing="Unassigned"):
+    def write_bcs(self, output_name):
         """Writes data to bcs file
 
         Keyword arguments:
-            study_name: Name of the study
             output_name: Path to output file
-            replace_missing: A string indicates what missing values in metadata should be named
 
         Returns:
             Path to output file
         """
         try:
             with zipfile.ZipFile(output_name, "w") as zobj:
-                self.write_bcs_to_file(zobj, study_name, replace_missing)
+                self.write_bcs_to_file(zobj)
             return output_name
         except Exception as e:
             self.close()
             raise e
 
-    def get_metadata_path(self, study_name):
-        return os.path.join(study_name, "main", "metadata")
+    def get_metadata_path(self):
+        return os.path.join(self.study_id, "main", "metadata")
 
     def get_gene_gallery_object(self):
         obj = {"gene":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"gene"},"version":1,"protein":{"nameArr":[],"geneIDArr":[],"hashID":[],"featureType":"protein"}}
         return obj
 
-    def get_dimred_path(self, study_name):
-        return os.path.join(study_name, "main", "dimred")
+    def get_dimred_path(self):
+        return os.path.join(self.study_id, "main", "dimred")
 
-    def get_pca_path(self, study_name):
-        return os.path.join(study_name, "main", "pca_result.hdf5")
+    def get_pca_path(self):
+        return os.path.join(self.study_id, "main", "pca_result.hdf5")
 
-    def get_main_path(self, study_name):
-        return os.path.join(study_name, "main")
+    def get_main_path(self):
+        return os.path.join(self.study_id, "main")
 
-    def get_runinfo_path(self, study_name):
-        return study_name
+    def get_runinfo_path(self):
+        return self.study_id
 
 class ScanpyData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts", pca_key="X_pca",
-                    cite_seq_suffix=None):
+                    cite_seq_suffix=None,
+                    **kwargs):
         """Constructor of ScanpyData object
 
         Keyword arguments:
@@ -733,8 +758,12 @@ class ScanpyData(DataObject):
         """
         if graph_based is None:
             graph_based = SCANPYDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source=source, graph_based=graph_based)
-        self.object = scanpy.read_h5ad(source, "r")
+        DataObject.__init__(self, source=source, graph_based=graph_based,
+                            **kwargs)
+        if isinstance(source, AnnData):
+            self.object = source
+        else:
+            self.object = scanpy.read_h5ad(source, "r")
         self.raw_key = raw_key
         self.pca_key = pca_key
         if cite_seq_suffix is not None:
@@ -753,6 +782,7 @@ class ScanpyData(DataObject):
             print("Detected %d columns of cite-seq data using suffix %s" % (len(cs_columns), cite_seq_suffix), flush=True)
         else:
             self.cite_seq_data = None
+        self.run_info = self.create_runinfo()
 
     def close(self):
         pass
@@ -1014,12 +1044,11 @@ class SubclusterData(DataObject):
         with zobj.open(os.path.join(cluster_info_path, "cluster_info.json"), "w") as z:
             z.write(json.dumps(obj).encode("utf8"))
 
-    def write_sub_clusters(self, zobj, study_name):
+    def write_sub_clusters(self, zobj):
         """Writes sub clusters data to a given zip object
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            study_name: Name of the study
 
         Returns:
             None
@@ -1031,59 +1060,54 @@ class SubclusterData(DataObject):
             #TODO Change this to hash in the future
             cluster_id = cluster
             id_list.append(cluster_id)
-            self.write_sub_dimred(zobj, self.get_sub_dimred_path(study_name, cluster_id),
+            self.write_sub_dimred(zobj, self.get_sub_dimred_path(cluster_id),
                                     sub_name=cluster_id)
-            self.write_sub_folder(zobj, self.get_sub_path(study_name, cluster_id),
+            self.write_sub_folder(zobj, self.get_sub_path(cluster_id),
                                     sub_name=cluster_id)
             tmp = [int(x) for x in cell_indexes]
-            self.write_cluster_info(zobj, self.get_cluster_info_path(study_name, cluster_id),
+            self.write_cluster_info(zobj, self.get_cluster_info_path(cluster_id),
                                     sub_name=cluster_id, selected_arr=tmp)
-        with zobj.open(os.path.join(study_name, "sub", "graph_cluster.json"), "w") as z:
+        with zobj.open(os.path.join(self.study_id, "sub", "graph_cluster.json"), "w") as z:
             z.write(json.dumps({"main":id_list}).encode("utf8"))
 
-    def write_bcs_to_file(self, zobj, study_name, replace_missing):
+    def write_bcs_to_file(self, zobj):
         """Write data with sub clusters to a given zobj file as bcs format
 
         Keyword arguments:
             zobj: The opened-for-write zip file
-            study_name: Name of the study
-            replace_missing: A string indicates what missing values in metadata should be replaced with
 
         Returns:
             None
         """
-        DataObject.write_bcs_to_file(self, zobj, study_name, replace_missing)
-        self.write_sub_clusters(zobj, study_name=study_name)
+        DataObject.write_bcs_to_file(self, zobj)
+        self.write_sub_clusters(zobj)
 
-    def get_sub_dimred_path(self, study_name, sub_name):
+    def get_sub_dimred_path(self, sub_name):
         """Gets the path where BBrowser reads dimred data of sub clusters
 
         Keyword arguments:
-            study_name: Name of the study
             sub_name: Name of the sub cluster
         """
-        return os.path.join(study_name, "sub", sub_name, "dimred")
+        return os.path.join(self.study_id, "sub", sub_name, "dimred")
 
-    def get_sub_path(self, study_name, sub_name):
+    def get_sub_path(self, sub_name):
         """Gets the path where BBrowser reads sub clusters data
 
         Keyword arguments:
-            study_name: Name of the study
             sub_name: Name of the sub cluster
         """
-        return os.path.join(study_name, "sub", sub_name)
+        return os.path.join(self.study_id, "sub", sub_name)
 
-    def get_cluster_info_path(self, study_name, sub_name):
+    def get_cluster_info_path(self, sub_name):
         """Gets the path where BBrowser reads cluster info
 
         Keyword arguments:
-            study_name: Name of the study
             sub_name: Name of the sub cluster
         """
-        return os.path.join(study_name, "sub", sub_name)
+        return os.path.join(self.study_id, "sub", sub_name)
 
 class SpringData(SubclusterData):
-    def __init__(self, source, graph_based):
+    def __init__(self, source, graph_based, **kwargs):
         """Constructor of SpringData object
 
         Keyword arguments:
@@ -1092,7 +1116,9 @@ class SpringData(SubclusterData):
         """
         if graph_based is None:
             graph_based = SPRINGDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source=source, graph_based=graph_based)
+        DataObject.__init__(self, source=source, graph_based=graph_based,
+                            **kwargs)
+        self.run_info = self.create_runinfo()
 
     def close(self):
         pass
@@ -1215,12 +1241,13 @@ class SpringData(SubclusterData):
 
 class LoomData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts",
-                        barcode_name=DEFAULT_BARCODE_NAME,
-                        feature_name=DEFAULT_FEATURE_NAME,
-                        dimred_keys=DEFAULT_DIMRED_KEYS):
+                    barcode_name=DEFAULT_BARCODE_NAME,
+                    feature_name=DEFAULT_FEATURE_NAME,
+                    dimred_keys=DEFAULT_DIMRED_KEYS,
+                    **kwargs):
         if graph_based is None:
             graph_based = LOOMDATA_DEFAULT_GRAPH_BASED
-        DataObject.__init__(self, source, graph_based)
+        DataObject.__init__(self, source, graph_based, **kwargs)
         self.raw_key = raw_key
         self.object = loompy.connect(source, "r")
         if barcode_name is None:
@@ -1244,6 +1271,7 @@ class LoomData(DataObject):
                 if len(dimred_keys[key]) < 2:
                     raise Exception("Dimensional reduction data must have at least two dimensions")
             self.dimred_keys = dimred_keys
+        self.run_info = self.create_runinfo()
 
     def close(self):
         self.object.close()
@@ -1296,9 +1324,10 @@ class LoomData(DataObject):
 
 class AbloomData(DataObject):
     def __init__(self, source, graph_based, raw_key="counts",
-                        barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
-                        feature_name=DEFAULT_ABLOOM_FEATURE_NAME):
-        DataObject.__init__(self, source, graph_based)
+                    barcode_name=DEFAULT_ABLOOM_BARCODE_NAME,
+                    feature_name=DEFAULT_ABLOOM_FEATURE_NAME,
+                    **kwargs):
+        DataObject.__init__(self, source, graph_based, **kwargs)
         self.raw_key = raw_key
         if barcode_name is None:
             barcode_name = DEFAULT_ABLOOM_BARCODE_NAME
@@ -1307,6 +1336,7 @@ class AbloomData(DataObject):
         self.barcode_name = barcode_name
         self.feature_name = feature_name
         self.object = h5py.File(source, "r")
+        self.run_info = self.create_runinfo()
 
     def close(self):
         self.object.close()
@@ -1443,9 +1473,13 @@ def add_category_to_first(column, new_category):
     return column
 
 def format_data(source, output_name, input_format="h5ad", raw_key="counts",
-                replace_missing="Unassigned", graph_based=None,
-                barcode_name=None, feature_name=None,
-                dimred_keys=None, cite_seq_suffix=None):
+                replace_missing="Unassigned",
+                graph_based=None,
+                barcode_name=None,
+                feature_name=None,
+                dimred_keys=None,
+                cite_seq_suffix=None,
+                **kwargs):
     """Converts data to bcs format
 
     Keyword arguments:
@@ -1467,20 +1501,25 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     study_id = generate_uuid(remove_hyphen=False)
     if input_format == "h5ad":
         data_object = ScanpyData(source, raw_key=raw_key, graph_based=graph_based,
-                                cite_seq_suffix=cite_seq_suffix)
+                                cite_seq_suffix=cite_seq_suffix,
+                                replace_missing=replace_missing,
+                                **kwargs)
     elif input_format == "spring":
-        data_object = SpringData(source, graph_based=graph_based)
+        data_object = SpringData(source, graph_based=graph_based, **kwargs)
     elif input_format == "loom":
         data_object = LoomData(source, graph_based=graph_based,
+                                replace_missing=replace_missing,
                                 barcode_name=barcode_name,
                                 feature_name=feature_name,
-                                dimred_keys=dimred_keys)
+                                dimred_keys=dimred_keys,
+                                **kwargs)
     elif input_format == "abloom":
         data_object = AbloomData(source, graph_based=graph_based,
+                                    replace_missing=replace_missing,
                                     barcode_name=barcode_name,
-                                    feature_name=feature_name)
+                                    feature_name=feature_name,
+                                    **kwargs)
     else:
         raise Exception("Invalid input format: %s" % input_format)
-    return data_object.write_bcs(study_name=study_id, output_name=output_name,
-                                    replace_missing=replace_missing)
+    return data_object.write_bcs(output_name=output_name)
 
