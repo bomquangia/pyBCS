@@ -486,7 +486,7 @@ class DataObject(ABC):
         self.write_dimred_to_file(zobj, dimred_path, dimred_data)
 
     def write_matrix_to_hdf5(self, dest_hdf5, norm_M, raw_M, barcodes, features,
-                                has_raw):
+                                has_raw, expanded):
         """Writes expression data to a hdf5 file
 
         Keyword arguments:
@@ -524,13 +524,6 @@ class DataObject(ABC):
         normalizedT_group.create_dataset("indptr", data=norm_M.indptr)
         normalizedT_group.create_dataset("shape", data=[len(barcodes), len(features)])
 
-        protein_names = self.get_proteins()
-        if protein_names is not None:
-            print("Writing feature types")
-            feature_type = ["RNA"] * (len(features) - len(protein_names)) + ["ADT"] * len(protein_names)
-            bioturing_group = dest_hdf5.create_group("bioturing")
-            bioturing_group.create_dataset("feature_type",
-                                    data = encode_strings(feature_type))
 
         print("Writing group \"colsum\"")
         norm_M = norm_M.tocsr()
@@ -554,8 +547,35 @@ class DataObject(ABC):
         if has_raw:
             colsum_group.create_dataset("log", data=sum_log)
             colsum_group.create_dataset("raw", data=sum_raw)
+        
+        if not expanded:
+          return
+        
+        # Writing bioturing group for expanded bcs study 
+        # that needs no subsequent processing when open/import to BBrowser
+        print("Writing group \"bioturing\"")
+        norm_M = norm_M.transpose()
+        bioturing_group = dest_hdf5.create_group("bioturing")
+        bioturing_group.create_dataset("barcodes",
+                                        data=encode_strings(barcodes))
+        bioturing_group.create_dataset("features",
+                                        data=encode_strings(features))
+        bioturing_group.create_dataset("data", data=norm_M.data)
+        bioturing_group.create_dataset("indices", data=norm_M.indices)
+        bioturing_group.create_dataset("indptr", data=norm_M.indptr)
+        bioturing_group.create_dataset("shape", data=[len(features), len(barcodes)])
+        protein_names = self.get_proteins()
 
-    def write_matrix(self, dest_hdf5):
+        protein_names = self.get_proteins()
+        if protein_names is not None:
+            print("Writing feature types")
+            feature_type = ["RNA"] * (len(features) - len(protein_names)) + ["ADT"] * len(protein_names)
+            bioturing_group = dest_hdf5.create_group("bioturing")
+            bioturing_group.create_dataset("feature_type",
+                                    data = encode_strings(feature_type))
+
+    
+    def write_matrix(self, dest_hdf5, expanded):
         """Writes expression data to the zip file
 
         Keyword arguments:
@@ -570,7 +590,7 @@ class DataObject(ABC):
         #TODO: Reduce memory usage
         norm_M, raw_M, barcodes, features, has_raw = self.get_synced_data()
         self.write_matrix_to_hdf5(dest_hdf5, norm_M, raw_M, barcodes, features,
-                                    has_raw)
+                                    has_raw, expanded)
         return barcodes, features, has_raw
 
 
@@ -603,7 +623,7 @@ class DataObject(ABC):
         with zobj.open(os.path.join(main_path, "gene_gallery.json"), "w") as z:
             z.write(json.dumps(self.get_gene_gallery_object()).encode("utf8"))
 
-    def write_main_folder(self, zobj, main_path):
+    def write_main_folder(self, zobj, main_path, expanded):
         """Writes data to "main" folder
 
         Keyword arguments:
@@ -616,7 +636,7 @@ class DataObject(ABC):
         print("Writing main/matrix.hdf5", flush=True)
         tmp_matrix = "." + str(uuid.uuid4())
         with h5py.File(tmp_matrix, "w") as dest_hdf5:
-            barcodes, features, has_raw = self.write_matrix(dest_hdf5)
+            barcodes, features, has_raw = self.write_matrix(dest_hdf5, expanded)
         self.write_main_folder_to_file(zobj, main_path, tmp_matrix, barcodes,
                                         features)
         os.remove(tmp_matrix)
@@ -665,13 +685,19 @@ class DataObject(ABC):
         with zobj.open(os.path.join(runinfo_path, "run_info.json"), "w") as z:
             z.write(json.dumps(self.run_info).encode("utf8"))
 
-    def write_bcs_info(self, zobj, bcs_info_path):
+    def write_bcs_info(self, zobj, bcs_info_path, expanded):
         version = {}
         with open(os.path.join(Path(__file__).parent, "version.py"), "r") as f:
             exec(f.read(), version)
-        bcs_info = {
+        if expanded: # So that NoraSC keep the count matrix as is
+          bcs_info = {
+                "version": "0.0.0"
+                }
+        else: 
+          bcs_info = {
                 "version":version["__version__"]
                 }
+        
         with zobj.open(os.path.join(bcs_info_path, "bcs_info.json"), "w") as z:
             z.write(json.dumps(bcs_info).encode("utf8"))
 
@@ -720,7 +746,7 @@ class DataObject(ABC):
         """
         try:
             with zipfile.ZipFile(output_name, "w") as zobj:
-                self.write_bcs_to_file(zobj)
+                self.write_bcs_to_file(zobj, expanded)
             return output_name
         except Exception as e:
             self.close()
@@ -1522,4 +1548,3 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
     else:
         raise Exception("Invalid input format: %s" % input_format)
     return data_object.write_bcs(output_name=output_name)
-
