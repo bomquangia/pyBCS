@@ -1505,6 +1505,7 @@ def format_data(source, output_name, input_format="h5ad", raw_key="counts",
                 feature_name=None,
                 dimred_keys=None,
                 cite_seq_suffix=None,
+                expanded=False,
                 **kwargs):
     """Converts data to bcs format
 
